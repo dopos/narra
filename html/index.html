@@ -43,8 +43,19 @@ body {
 }
 .login h1 { color: #fff; text-shadow: 0 0 10px rgba(0,0,0,0.3); letter-spacing:1px; text-align:center; }
 
-input { 
+input[type=text], input[type=password] {
 	width: 100%; 
+}
+div#check {
+  text-align:center;
+}
+label {
+	font-size: 13px;
+	color: #fff;
+	text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+	margin-left: 10px; 
+}
+input { 
 	margin-bottom: 10px; 
 	background: rgba(0,0,0,0.3);
 	border: none;
@@ -76,7 +87,7 @@ input:focus { box-shadow: inset 0 -5px 45px rgba(100,100,100,0.4), 0 1px 1px rgb
     <form method="post" action="/login">
         <input type="text" name="name" placeholder="Username" required="required" />
         <input type="password" name="pass" placeholder="Password" required="required" />
-        <input type="hidden" name="keep" value="on" />
+        <div id="check"><input type="checkbox" name="keep" title="Remember me" id="chk" /><label for="chk">Remember me</label></div>
         <button type="submit" class="btn btn-primary btn-block btn-large">Let me in.</button>
     </form>
 </div>
