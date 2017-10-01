@@ -7,6 +7,10 @@ Primary goal is to allow logins via [gitea](https://gitea.io) API.
 
 Usage example available inside [dcape](https://github.com/dopos/dcape) project (see apps/cis there).
 
+## Install
+
+narra is available as docker image, see https://store.docker.com/community/images/dopos/narra
+
 ## License
 
 The MIT License (MIT), see [LICENSE](LICENSE).
