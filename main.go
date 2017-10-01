@@ -65,6 +65,7 @@ func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags [
 	req.Header.Add("Authorization", "Basic "+auth)
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("Gitea req error: %s", err.Error())
 		http.Error(w, "Error loading user data", http.StatusInternalServerError)
 		return
 	}

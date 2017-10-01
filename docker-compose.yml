@@ -2,11 +2,11 @@ version: '2.1'
 
 services:
 
-  web:
+  narra-web:
     image: nginx:1.13-alpine
     restart: always
     depends_on:
-      - narra
+      - narra-dev
     networks:
       - lan
     labels:
@@ -19,7 +19,7 @@ services:
       - ./test:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
-  narra:
+  narra-dev:
     image: narra
     restart: always
     networks:
