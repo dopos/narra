@@ -29,6 +29,8 @@ type Config struct {
 	GiteaOrg  string   `long:"gitea_org"  default:"dcape1709"         description:"Gitea org which members are allowed to login"`
 	//	GiteaOrg  []string `long:"gitea_org"  default:"dcape1709"         description:"Gitea org which members are allowed to login"`
 
+	HTML           string `long:"html" default:"" description:"Serve login page from this path"`
+	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use this header for token if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
 	CookieName     string `long:"cookie_name" default:"narra_token" description:"Auth cookie name"`
 	CookieExpire   int    `long:"cookie_expire" default:"14" description:"Cookie TTL (days)"`
@@ -59,7 +61,7 @@ func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags [
 	// get username
 	req, err := http.NewRequest("GET", cfg.GiteaHost+GiteaUserURL, nil)
 	req.Header.Add("Accept", "application/json")
-	log.Printf("Sending auth: %s", auth)
+	//log.Printf("Sending auth: %s", auth)
 	req.Header.Add("Authorization", "Basic "+auth)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -71,7 +73,7 @@ func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags [
 		w.WriteHeader(resp.StatusCode)
 		return
 	}
-	log.Printf("Resp: %+v", resp)
+	//log.Printf("Resp: %+v", resp)
 	var user account
 	json.NewDecoder(resp.Body).Decode(&user)
 	if user.Message != "" {
@@ -105,8 +107,6 @@ func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags [
 
 // PostHandler converts post request body to string
 func PostHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("1****** Request: %s - %s", r.Method, r.URL.Path)
-	log.Printf("1** Headers: %+v", r.Header)
 	if r.Method != "POST" {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -115,7 +115,7 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("pass")
 	keep := r.FormValue("keep")
 
-	log.Printf("1** Auth data (%s:%s) (%s)", name, password, keep)
+	//log.Printf("** Auth data (%s:%s) (%s)", name, password, keep)
 
 	// Get data from context
 	cfg := r.Context().Value("Config").(*Config)
@@ -128,17 +128,16 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// store usernames in cookie
-	days := cfg.CookieExpire
-	if keep == "" {
-		days = 0
-	}
-	expiration := time.Now().Add(time.Duration(days) * 24 * time.Hour)
 	if encoded, err := sc.Encode(cfg.CookieName, &ids); err == nil {
 		cookie := &http.Cookie{
-			Name:    cfg.CookieName,
-			Value:   encoded,
-			Path:    "/",
-			Expires: expiration,
+			Name:  cfg.CookieName,
+			Value: encoded,
+			Path:  "/",
+		}
+		if keep != "" {
+			days := cfg.CookieExpire
+			expiration := time.Now().Add(time.Duration(days) * 24 * time.Hour)
+			cookie.Expires = expiration
 		}
 		if cfg.CookieDomain != "" {
 			cookie.Domain = cfg.CookieDomain
@@ -151,33 +150,40 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // -----------------------------------------------------------------------------
-func AuthHandler(w http.ResponseWriter, r *http.Request) {
 
-	log.Printf("****** Request: %s - %s", r.Method, r.URL.Path)
-	log.Printf("** Headers: %+v", r.Header)
+func fetchToken(r *http.Request, cfg *Config) string {
+	if auth := r.Header.Get(cfg.AuthHeader); auth != "" {
+		return auth
+	}
+	if cookie, err := r.Cookie(cfg.CookieName); err == nil {
+		return cookie.Value
+	}
+	return ""
+}
+
+// -----------------------------------------------------------------------------
+
+func AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get data from context
 	cfg := r.Context().Value("Config").(*Config)
 	sc := r.Context().Value("Cookie").(*securecookie.SecureCookie)
 
-	var cookie *http.Cookie
-	var err error
-	if cookie, err = r.Cookie(cfg.CookieName); err != nil {
-		log.Printf("cookie fetch error: %v", err)
-		log.Printf("status %s", http.StatusUnauthorized)
+	token := fetchToken(r, cfg)
+	if token == "" {
 		w.WriteHeader(http.StatusUnauthorized)
-		//		http.Error(w, http.StatusText(401), 401)
 		return
 	}
+	//log.Printf("Token: %v", token)
 
 	ids := []string{}
-	if err := sc.Decode(cfg.CookieName, cookie.Value, &ids); err == nil {
+	if err := sc.Decode(cfg.CookieName, token, &ids); err == nil {
 		if stringExists(ids, cfg.GiteaOrg) {
-			w.Header().Add("X-User", ids[0])
+			w.Header().Add("X-Username", ids[0])
 			w.WriteHeader(http.StatusOK)
 			return
 		} else {
-			log.Println("user is not in required org")
+			log.Printf("user %s is not in required org %s", ids[0], cfg.GiteaOrg)
 		}
 	} else {
 		log.Println("Cookie encode error", err)
@@ -233,8 +239,12 @@ func main() {
 
 	mux := http.NewServeMux()
 	// mux.Handle("/", http.FileServer(assetFS()))
-	//	mux.Handle("/", http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo}))
-	mux.Handle("/", AddContext(&cfg, sc, http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo})))
+	if cfg.HTML != "" {
+		mux.Handle("/", http.FileServer(http.Dir(cfg.HTML)))
+	} else {
+		mux.Handle("/", http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo}))
+	}
+
 	mux.Handle("/login", AddContext(&cfg, sc, http.HandlerFunc(PostHandler)))
 	mux.Handle("/auth", AddContext(&cfg, sc, http.HandlerFunc(AuthHandler)))
 	log.Fatal(graceful.ListenAndServe(cfg.Listen, mux))
