@@ -18,6 +18,8 @@ FROM scratch
 
 WORKDIR /
 COPY --from=0 /go/src/github.com/dopos/narra/narra .
+# Need for SSL
+COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 EXPOSE 8080
 ENTRYPOINT ["/narra"]
