@@ -1,68 +1,122 @@
-//go:generate go-bindata -pkg $GOPACKAGE -prefix html -o bindata.go html/
-
 package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/elazarl/go-bindata-assetfs"
+	"github.com/google/uuid"
 	"github.com/jessevdk/go-flags"
+	"github.com/patrickmn/go-cache"
 	"github.com/zenazn/goji/graceful"
 	"gopkg.in/gorilla/securecookie.v1"
 )
 
-/* ------------------------------------------------------------------------------------------- */
 // Config holds program options
 type Config struct {
-	Listen string `long:"listen" default:":8080" description:"Addr and port which server listens at"`
+	Listen   string `long:"listen" default:":8080" description:"Addr and port which server listens at"`
+	Host     string `long:"host" default:"http://narra.dev.lan" description:"Own host URL"`
+	LoginURL string `long:"login_url" default:"/login" description:"Auth redirect URL"`
 
-	Providers []string `long:"provider"   default:"gitea"             description:"Allowed auth provider type(s)"`
-	GiteaHost string   `long:"gitea_host" default:"http://gitea:8080" description:"Gitea host"`
-	GiteaOrg  string   `long:"gitea_org"  default:"dcape1709"         description:"Gitea org which members are allowed to login"`
-	//	GiteaOrg  []string `long:"gitea_org"  default:"dcape1709"         description:"Gitea org which members are allowed to login"`
+	ASType      string `long:"as_type" env:"AS_TYPE" default:"gitea"  choice:"gitea" choice:"mmost" description:"Authorization Server type (gitea|mmost)"`
+	ASHost      string `long:"as_host" env:"AS_HOST" default:"http://gitea:8080" description:"Authorization Server host"`
+	ASTeam      string `long:"as_team" env:"AS_TEAM" default:"dcape" description:"Authorization Server team which members has access to resource"`
+	ASClientID  string `long:"as_client_id" env:"AS_CLIENT_ID" description:"Authorization Server Client ID"`
+	ASClientKey string `long:"as_client_key" env:"AS_CLIENT_KEY" description:"Authorization Server Client key"`
 
-	HTML           string `long:"html" default:"" description:"Serve login page from this path"`
-	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use this header for token if given"`
+	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use token from this header if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
 	CookieName     string `long:"cookie_name" default:"narra_token" description:"Auth cookie name"`
-	CookieExpire   int    `long:"cookie_expire" default:"14" description:"Cookie TTL (days)"`
-	CookieSignKey  string `long:"cookie_sign" description:"Cookie sign key (32 or 64 bytes)"`
-	CookieCryptKey string `long:"cookie_crypt" description:"Cookie crypt key (16, 24, or 32)"`
+	CookieSignKey  string `long:"cookie_sign" env:"COOKIE_SIGN_KEY" description:"Cookie sign key (32 or 64 bytes)"`
+	CookieCryptKey string `long:"cookie_crypt" env:"COOKIE_CRYPT_KEY" description:"Cookie crypt key (16, 24, or 32 bytes)"`
 }
 
-// Note: Change gitea_org to logout all users
-
-type accounts []account
-type account struct {
-	Username string `json:"username"`
-	Fullname string `json:"full_name"`
-	Message  string `json:"message"`
+// Provider holds Authorization Server properties
+type Provider struct {
+	Auth        string
+	Token       string
+	User        string
+	Team        string
+	TokenPrefix string
+	TeamName    string
 }
 
-const (
-	GiteaUserURL = "/api/v1/user"
-	GiteaOrgURL  = "/api/v1/user/orgs"
+var (
+	// Providers holds supported Authorization Servers data
+	Providers = map[string]Provider{
+		"gitea": {
+			Auth:        "/login/oauth/authorize",
+			Token:       "/login/oauth/access_token",
+			User:        "/api/v1/user",
+			Team:        "/api/v1/user/orgs",
+			TokenPrefix: "token ",
+			TeamName:    "username",
+		},
+		"mmost": {
+			Auth:        "/oauth/authorize",
+			Token:       "/oauth/access_token",
+			User:        "/api/v4/users/me",
+			Team:        "/api/v4/users/%s/teams",
+			TokenPrefix: "Bearer ",
+			TeamName:    "name",
+		},
+	}
 )
 
-// -----------------------------------------------------------------------------
+// getToken fetches user token from auth server
+func getToken(w http.ResponseWriter, cfg *Config, code string) string {
+	// Mattermost does not support "application/json" so use form
+	data := url.Values{
+		"client_id":     []string{cfg.ASClientID},
+		"client_secret": []string{cfg.ASClientKey},
+		"code":          []string{code},
+		"grant_type":    []string{"authorization_code"},
+		"redirect_uri":  []string{cfg.Host + cfg.LoginURL},
+	}
+	resp, err := http.Post(cfg.ASHost+Providers[cfg.ASType].Token, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 
-func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags []string) {
-	auth := base64.StdEncoding.EncodeToString([]byte(name + ":" + password))
+	if err != nil {
+		log.Printf("get token error: %s", err.Error())
+		http.Error(w, "Error loading user data", http.StatusInternalServerError)
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Req token error: %+v", resp)
+		w.WriteHeader(resp.StatusCode)
+		return ""
+	}
+
+	defer resp.Body.Close()
+	log.Printf("Resp: %+v", resp)
+	var meta map[string]string
+	json.NewDecoder(resp.Body).Decode(&meta)
+	if meta["access_token"] == "" {
+		http.Error(w, "No token", http.StatusInternalServerError)
+		return ""
+	}
+	return meta["access_token"]
+}
+
+// getMeta fetches user metadata from auth server
+func getMeta(w http.ResponseWriter, cfg *Config, token string) (tags []string) {
 	client := &http.Client{}
 
 	// get username
-	req, err := http.NewRequest("GET", cfg.GiteaHost+GiteaUserURL, nil)
+	req, err := http.NewRequest("GET", cfg.ASHost+Providers[cfg.ASType].User, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 	req.Header.Add("Accept", "application/json")
-	//log.Printf("Sending auth: %s", auth)
-	req.Header.Add("Authorization", "Basic "+auth)
+
+	req.Header.Add("Authorization", Providers[cfg.ASType].TokenPrefix+token)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Gitea req error: %s", err.Error())
@@ -74,60 +128,108 @@ func giteaIDs(w http.ResponseWriter, cfg *Config, name, password string) (tags [
 		w.WriteHeader(resp.StatusCode)
 		return
 	}
-	//log.Printf("Resp: %+v", resp)
-	var user account
+	defer resp.Body.Close()
+
+	var user map[string]string
 	json.NewDecoder(resp.Body).Decode(&user)
-	if user.Message != "" {
-		http.Error(w, user.Message, http.StatusInternalServerError)
+	log.Printf("User: %+v", user)
+	tags = append(tags, user["username"])
+
+	if len(cfg.ASTeam) == 0 {
 		return
 	}
-	log.Printf("User: %+v", user)
-	tags = append(tags, user.Username)
-
-	if len(cfg.GiteaOrg) > 0 {
-		// get user groups
-		req, err = http.NewRequest("GET", cfg.GiteaHost+GiteaOrgURL, nil)
-		req.Header.Add("Accept", "application/json")
-		req.Header.Add("Authorization", "Basic "+auth)
-		resp, err = client.Do(req)
-		if err != nil {
-			log.Printf("Error loading org data: %v", err)
-			return
-		}
-		var orgs accounts
-		json.NewDecoder(resp.Body).Decode(&orgs)
-		for _, o := range orgs {
-			log.Printf("Org: %+v", o)
-			tags = append(tags, o.Username)
-		}
+	// get user groups
+	url := Providers[cfg.ASType].Team
+	if strings.Contains(url, "%s") {
+		url = fmt.Sprintf(url, user["id"])
 	}
+	req, err = http.NewRequest("GET", cfg.ASHost+url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", Providers[cfg.ASType].TokenPrefix+token)
+	resp, err = client.Do(req)
+	if err != nil {
+		log.Printf("Error loading org data: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var orgs []map[string]string
+	json.NewDecoder(resp.Body).Decode(&orgs)
+	log.Printf("Resp: %+v", orgs)
+	for _, o := range orgs {
+		log.Printf("Org: %+v", o)
+		tags = append(tags, o[Providers[cfg.ASType].TeamName])
+	}
+
 	return
 }
 
-// -----------------------------------------------------------------------------
+// InitHandler handles 401 error & redirects user to auth server
+func InitHandler(w http.ResponseWriter, r *http.Request) {
 
-// PostHandler converts post request body to string
+	cfg := r.Context().Value("Config").(*Config)
+	c := r.Context().Value("Cache").(*cache.Cache)
+
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		log.Fatal("Gen error:", err)
+	}
+	url := r.Header.Get("X-Original-Uri")
+	log.Printf("UUID: %s REQ:%+v\n", uuid.String(), url)
+
+	c.Set(uuid.String(), url, cache.DefaultExpiration)
+	req, err := http.NewRequest("GET", cfg.ASHost+Providers[cfg.ASType].Auth, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	q.Add("client_id", cfg.ASClientID)
+	q.Add("redirect_uri", cfg.Host+cfg.LoginURL)
+	q.Add("response_type", "code")
+	q.Add("state", uuid.String())
+	req.URL.RawQuery = q.Encode()
+
+	log.Printf("Redir to %s", req.URL.String())
+	http.Redirect(w, r, req.URL.String(), http.StatusFound)
+}
+
+// PostHandler handles redirect from auth provider
+// fetches token & user info
 func PostHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	/*	if r.Method != "POST" {
+			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+			return
+		}
+	*/code := r.FormValue("code")
+	state := r.FormValue("state")
+	log.Printf("** Auth data (%s:%s)", code, state)
+	if code == "" || state == "" {
+		http.Error(w, "auth not granted", http.StatusForbidden)
 		return
 	}
-	name := r.FormValue("name")
-	password := r.FormValue("pass")
-	keep := r.FormValue("keep")
-
-	//log.Printf("** Auth data (%s:%s) (%s)", name, password, keep)
-
 	// Get data from context
 	cfg := r.Context().Value("Config").(*Config)
 	sc := r.Context().Value("Cookie").(*securecookie.SecureCookie)
+	c := r.Context().Value("Cache").(*cache.Cache)
 
-	// load usernames from gitea
-	ids := giteaIDs(w, cfg, name, password)
-	if len(ids) == 0 {
+	url, found := c.Get(state)
+	if !found {
+		http.Error(w, "Unknown state "+state, http.StatusMethodNotAllowed)
 		return
 	}
 
+	token := getToken(w, cfg, code)
+
+	// load usernames from gitea
+	ids := getMeta(w, cfg, token)
+	if len(ids) == 0 {
+		return
+	}
+	log.Printf("Meta IDs: %v", ids)
 	// store usernames in cookie
 	if encoded, err := sc.Encode(cfg.CookieName, &ids); err == nil {
 		cookie := &http.Cookie{
@@ -135,23 +237,19 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 			Value: encoded,
 			Path:  "/",
 		}
-		if keep != "" {
-			days := cfg.CookieExpire
-			expiration := time.Now().Add(time.Duration(days) * 24 * time.Hour)
-			cookie.Expires = expiration
-		}
+
 		if cfg.CookieDomain != "" {
 			cookie.Domain = cfg.CookieDomain
 		}
 		http.SetCookie(w, cookie)
-		http.Redirect(w, r, r.Referer(), http.StatusSeeOther)
+		log.Printf("All OK, redir to %s", url)
+		http.Redirect(w, r, url.(string), http.StatusFound)
 	} else {
 		log.Println("Cookie encode error", err)
 	}
 }
 
-// -----------------------------------------------------------------------------
-
+// fetchToken fetches token from header or cookie
 func fetchToken(r *http.Request, cfg *Config) string {
 	if auth := r.Header.Get(cfg.AuthHeader); auth != "" {
 		return auth
@@ -162,8 +260,7 @@ func fetchToken(r *http.Request, cfg *Config) string {
 	return ""
 }
 
-// -----------------------------------------------------------------------------
-
+// AuthHandler is a Nginx auth_request handler
 func AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get data from context
@@ -179,33 +276,29 @@ func AuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	ids := []string{}
 	if err := sc.Decode(cfg.CookieName, token, &ids); err == nil {
-		if stringExists(ids, cfg.GiteaOrg) {
+		if stringExists(ids, cfg.ASTeam) {
 			w.Header().Add("X-Username", ids[0])
 			w.WriteHeader(http.StatusOK)
-			return
 		} else {
-			log.Printf("user %s is not in required org %s", ids[0], cfg.GiteaOrg)
+			http.Error(w, fmt.Sprintf("user %s is not in required org %s", ids[0], cfg.ASTeam), http.StatusForbidden)
 		}
+		return
 	} else {
 		log.Println("Cookie encode error", err)
 	}
-	//	w.WriteHeader(http.StatusUnauthorized)
-	http.Error(w, http.StatusText(401), 401)
-
+	http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 }
 
-// -----------------------------------------------------------------------------
-
-func AddContext(cfg *Config, sc *securecookie.SecureCookie, next http.Handler) http.Handler {
+// AddContext add context vars to request
+func AddContext(cfg *Config, sc *securecookie.SecureCookie, c *cache.Cache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Println(r.Method, "-", r.RequestURI)
 		ctx0 := context.WithValue(r.Context(), "Config", cfg)
-		ctx := context.WithValue(ctx0, "Cookie", sc)
+		ctx1 := context.WithValue(ctx0, "Cache", c)
+		ctx := context.WithValue(ctx1, "Cookie", sc)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
-// -----------------------------------------------------------------------------
 
 func main() {
 
@@ -216,6 +309,7 @@ func main() {
 		if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
 			os.Exit(1) // help printed
 		} else {
+			log.Printf("Config error: %v", e)
 			os.Exit(2) // error message written already
 		}
 	}
@@ -236,18 +330,14 @@ func main() {
 	var cryptKey = []byte(cfg.CookieCryptKey)
 	var sc = securecookie.New(signKey, cryptKey)
 
+	var c = cache.New(5*time.Minute, 10*time.Minute)
+
 	log.Printf("Start listening at %s", cfg.Listen)
 
 	mux := http.NewServeMux()
-	// mux.Handle("/", http.FileServer(assetFS()))
-	if cfg.HTML != "" {
-		mux.Handle("/", http.FileServer(http.Dir(cfg.HTML)))
-	} else {
-		mux.Handle("/", http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, AssetInfo: AssetInfo}))
-	}
-
-	mux.Handle("/login", AddContext(&cfg, sc, http.HandlerFunc(PostHandler)))
-	mux.Handle("/auth", AddContext(&cfg, sc, http.HandlerFunc(AuthHandler)))
+	mux.Handle(cfg.LoginURL, AddContext(&cfg, sc, c, http.HandlerFunc(PostHandler)))
+	mux.Handle("/auth", AddContext(&cfg, sc, c, http.HandlerFunc(AuthHandler)))
+	mux.Handle("/", AddContext(&cfg, sc, c, http.HandlerFunc(InitHandler)))
 	log.Fatal(graceful.ListenAndServe(cfg.Listen, mux))
 
 }

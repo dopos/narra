@@ -30,7 +30,16 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command:
-      --gitea_host ${GITEA_HOST} --cookie_sign ${SIGN_KEY} --cookie_crypt ${CRYPT_KEY}
+      --host ${APP_PROTO}://${APP_SITE}
+    environment:
+      - AS_TYPE=${AS_TYPE}
+      - AS_HOST=${AS_HOST}
+      - AS_TEAM=${AS_TEAM}
+      - AS_CLIENT_ID=${AS_CLIENT_ID}
+      - AS_CLIENT_KEY=${AS_CLIENT_KEY}
+      - COOKIE_SIGN_KEY=${COOKIE_SIGN_KEY}
+      - COOKIE_CRYPT_KEY=${COOKIE_CRYPT_KEY}
+
     build:
       context: .
 
