@@ -19,4 +19,4 @@ narra is available as docker image, see https://store.docker.com/community/image
 
 The MIT License (MIT), see [LICENSE](LICENSE).
 
-Copyright (c) 2017 Alexey Kovrizhkin <lekovr+dopos@gmail.com>
+Copyright (c) 2017-2020 Aleksei Kovrizhkin <lekovr+dopos@gmail.com>

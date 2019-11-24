@@ -56,7 +56,6 @@ export
 all: help
 
 $(PRG): $(SOURCES)
-	go generate
 	go build
 
 run: $(PRG)

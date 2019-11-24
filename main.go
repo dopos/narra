@@ -167,8 +167,8 @@ func getMeta(w http.ResponseWriter, cfg *Config, token string) (tags []string) {
 	return
 }
 
-// InitHandler handles 401 error & redirects user to auth server
-func InitHandler(w http.ResponseWriter, r *http.Request) {
+// Stage1Handler handles 401 error & redirects user to auth server
+func Stage1Handler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := r.Context().Value("Config").(*Config)
 	c := r.Context().Value("Cache").(*cache.Cache)
@@ -197,9 +197,9 @@ func InitHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, req.URL.String(), http.StatusFound)
 }
 
-// PostHandler handles redirect from auth provider
+// Stage2Handler handles redirect from auth provider
 // fetches token & user info
-func PostHandler(w http.ResponseWriter, r *http.Request) {
+func Stage2Handler(w http.ResponseWriter, r *http.Request) {
 	/*	if r.Method != "POST" {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -221,6 +221,7 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown state "+state, http.StatusMethodNotAllowed)
 		return
 	}
+	c.Delete(state)
 
 	token := getToken(w, cfg, code)
 
@@ -272,21 +273,21 @@ func AuthHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	log.Printf("Headers: %v", r.Header)
 	//log.Printf("Token: %v", token)
 
 	ids := []string{}
-	if err := sc.Decode(cfg.CookieName, token, &ids); err == nil {
-		if stringExists(ids, cfg.ASTeam) {
-			w.Header().Add("X-Username", ids[0])
-			w.WriteHeader(http.StatusOK)
-		} else {
-			http.Error(w, fmt.Sprintf("user %s is not in required org %s", ids[0], cfg.ASTeam), http.StatusForbidden)
-		}
-		return
-	} else {
+	if err := sc.Decode(cfg.CookieName, token, &ids); err != nil {
 		log.Println("Cookie encode error", err)
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
 	}
-	http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	if stringExists(ids, cfg.ASTeam) {
+		w.Header().Add("X-Username", ids[0])
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, fmt.Sprintf("user %s is not in required team %s", ids[0], cfg.ASTeam), http.StatusForbidden)
+	}
 }
 
 // AddContext add context vars to request
@@ -335,9 +336,9 @@ func main() {
 	log.Printf("Start listening at %s", cfg.Listen)
 
 	mux := http.NewServeMux()
-	mux.Handle(cfg.LoginURL, AddContext(&cfg, sc, c, http.HandlerFunc(PostHandler)))
+	mux.Handle(cfg.LoginURL, AddContext(&cfg, sc, c, http.HandlerFunc(Stage2Handler)))
 	mux.Handle("/auth", AddContext(&cfg, sc, c, http.HandlerFunc(AuthHandler)))
-	mux.Handle("/", AddContext(&cfg, sc, c, http.HandlerFunc(InitHandler)))
+	mux.Handle("/", AddContext(&cfg, sc, c, http.HandlerFunc(Stage1Handler)))
 	log.Fatal(graceful.ListenAndServe(cfg.Listen, mux))
 
 }
