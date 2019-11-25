@@ -30,7 +30,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command:
-      --as.my_url ${APP_PROTO}://${APP_SITE} --debug
+      --as.my_url ${APP_PROTO}://${APP_SITE}
     environment:
       - TYPE=${AS_TYPE}
       - HOST=${AS_HOST}

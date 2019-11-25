@@ -8,10 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/birkirb/loggers.v1"
-
 	"github.com/google/uuid"
 	"github.com/patrickmn/go-cache"
+	"gopkg.in/birkirb/loggers.v1"
 	"gopkg.in/gorilla/securecookie.v1"
 )
 
@@ -43,26 +42,36 @@ type ProviderConfig struct {
 	TeamName    string
 }
 
+// Service holds service attributes
 type Service struct {
-	log      loggers.Contextual
 	Config   Config
+	log      loggers.Contextual
 	cookie   *securecookie.SecureCookie
 	cache    *cache.Cache
 	provider *ProviderConfig
 }
 
+//Functional options
+//https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md
+
+// Option is a functional options return type
 type Option func(*Service)
 
+// Cache allows to change default cache lib
 func Cache(cache *cache.Cache) Option {
 	return func(srv *Service) {
 		srv.cache = cache
 	}
 }
+
+// Cookie allows to change default cookie lib
 func Cookie(cookie *securecookie.SecureCookie) Option {
 	return func(srv *Service) {
 		srv.cookie = cookie
 	}
 }
+
+// Provider allows to change authorization server config
 func Provider(prov *ProviderConfig) Option {
 	return func(srv *Service) {
 		srv.provider = prov
@@ -93,7 +102,6 @@ var (
 
 // New creates service
 func New(cfg Config, log loggers.Contextual, options ...Option) *Service {
-
 	srv := &Service{
 		Config: cfg,
 		log:    log,
@@ -114,60 +122,61 @@ func New(cfg Config, log loggers.Contextual, options ...Option) *Service {
 }
 
 // fetchToken fetches token from header or cookie
-func fetchToken(r *http.Request, cfg Config) string {
-	if auth := r.Header.Get(cfg.AuthHeader); auth != "" {
+func fetchToken(r *http.Request, header string, cookie string) string {
+	if auth := r.Header.Get(header); auth != "" {
 		return auth
 	}
-	if cookie, err := r.Cookie(cfg.CookieName); err == nil {
+	if cookie, err := r.Cookie(cookie); err == nil {
 		return cookie.Value
 	}
 	return ""
 }
 
+// HTTP handler pattern, see
+// https://www.alexedwards.net/blog/a-recap-of-request-handling
+
+// AuthHandler is a Nginx auth_request handler
 func (srv *Service) AuthHandler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-
-		token := fetchToken(r, srv.Config)
+		token := fetchToken(r, srv.Config.AuthHeader, srv.Config.CookieName)
 		if token == "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		srv.log.Debugf("Headers: %v", r.Header)
-		//log.Printf("Token: %v", token)
-
 		ids := []string{}
 		if err := srv.cookie.Decode(srv.Config.CookieName, token, &ids); err != nil {
 			srv.log.Error("Cookie encode error", err)
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			http.Error(w, "Cookie encode error", http.StatusInternalServerError)
 			return
 		}
 		if stringExists(ids, srv.Config.Team) {
+			srv.log.Debugf("User %s authorized", ids[0])
 			w.Header().Add("X-Username", ids[0])
 			w.WriteHeader(http.StatusOK)
 		} else {
 			http.Error(w, fmt.Sprintf("user %s is not in required team %s", ids[0], srv.Config.Team), http.StatusForbidden)
 		}
-
 	}
 	return http.HandlerFunc(fn)
 }
 
+// Stage1Handler handles 401 error & redirects user to auth server
 func (srv *Service) Stage1Handler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-
 		uuid, err := uuid.NewRandom()
 		if err != nil {
 			srv.log.Fatal("Gen error:", err)
 		}
 		url := r.Header.Get("X-Original-Uri")
-		srv.log.Printf("UUID: %s REQ:%+v\n", uuid.String(), url)
-
+		srv.log.Debugf("UUID: %s URI:%+v\n", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
 		req, err := http.NewRequest("GET", srv.Config.Host+srv.provider.Auth, nil)
 		if err != nil {
-			srv.log.Fatal(err)
+			srv.log.Errorf("Request create error: %v", err)
+			http.Error(w, "Request create error", http.StatusInternalServerError)
+			return
 		}
-
 		q := req.URL.Query()
 		q.Add("client_id", srv.Config.ClientID)
 		q.Add("redirect_uri", srv.Config.MyURL+srv.Config.CallBackURL)
@@ -175,106 +184,10 @@ func (srv *Service) Stage1Handler() http.Handler {
 		q.Add("state", uuid.String())
 		req.URL.RawQuery = q.Encode()
 
-		srv.log.Printf("Redir to %s", req.URL.String())
+		srv.log.Debugf("Redir to %s", req.URL.String())
 		http.Redirect(w, r, req.URL.String(), http.StatusFound)
 	}
 	return http.HandlerFunc(fn)
-}
-
-// getToken fetches user token from auth server
-func (srv *Service) getToken(w http.ResponseWriter, code string) string {
-	// Mattermost does not support "application/json" so use form
-	data := url.Values{
-		"client_id":     []string{srv.Config.ClientID},
-		"client_secret": []string{srv.Config.ClientKey},
-		"code":          []string{code},
-		"grant_type":    []string{"authorization_code"},
-		"redirect_uri":  []string{srv.Config.MyURL + srv.Config.CallBackURL},
-	}
-	resp, err := http.Post(srv.Config.Host+srv.provider.Token, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-
-	if err != nil {
-		//	log.Printf("get token error: %s", err.Error())
-		http.Error(w, "Error loading user data", http.StatusInternalServerError)
-		return ""
-	}
-	if resp.StatusCode != http.StatusOK {
-		//	log.Printf("Req token error: %+v", resp)
-		w.WriteHeader(resp.StatusCode)
-		return ""
-	}
-
-	defer resp.Body.Close()
-	//log.Printf("Resp: %+v", resp)
-	var meta map[string]string
-	json.NewDecoder(resp.Body).Decode(&meta)
-	if meta["access_token"] == "" {
-		http.Error(w, "No token", http.StatusInternalServerError)
-		return ""
-	}
-	return meta["access_token"]
-}
-
-// getMeta fetches user metadata from auth server
-func (srv *Service) getMeta(w http.ResponseWriter, token string) *[]string {
-	client := &http.Client{}
-
-	// get username
-	req, err := http.NewRequest("GET", srv.Config.Host+srv.provider.User, nil)
-	if err != nil {
-		srv.log.Fatal(err)
-	}
-	req.Header.Add("Accept", "application/json")
-
-	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		srv.log.Printf("Gitea req error: %s", err.Error())
-		http.Error(w, "Error loading user data", http.StatusInternalServerError)
-		return nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		srv.log.Printf("Req error: %+v", resp)
-		w.WriteHeader(resp.StatusCode)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	var user map[string]string
-	json.NewDecoder(resp.Body).Decode(&user)
-	srv.log.Printf("User: %+v", user)
-	tags := []string{user["username"]}
-
-	if len(srv.Config.Team) == 0 {
-		return nil
-	}
-	// get user groups
-	url := srv.provider.Team
-	if strings.Contains(url, "%s") {
-		url = fmt.Sprintf(url, user["id"])
-	}
-	req, err = http.NewRequest("GET", srv.Config.Host+url, nil)
-	if err != nil {
-		srv.log.Fatal(err)
-	}
-	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
-	resp, err = client.Do(req)
-	if err != nil {
-		srv.log.Printf("Error loading org data: %v", err)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	var orgs []map[string]string
-	json.NewDecoder(resp.Body).Decode(&orgs)
-	srv.log.Printf("Resp: %+v", orgs)
-	for _, o := range orgs {
-		srv.log.Printf("Org: %+v", o)
-		tags = append(tags, o[srv.provider.TeamName])
-	}
-
-	return &tags
 }
 
 // Stage2Handler handles redirect from auth provider
@@ -283,23 +196,35 @@ func (srv *Service) Stage2Handler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		code := r.FormValue("code")
 		state := r.FormValue("state")
-		srv.log.Debugf("** Auth data (%s:%s)", code, state)
+		// TODO: r.FormValue("error")
+		srv.log.Debugf("Auth data: (%s:%s)", code, state)
 		if code == "" || state == "" {
-			http.Error(w, "auth not granted", http.StatusForbidden)
+			http.Error(w, "auth not granted", http.StatusExpectationFailed)
 			return
 		}
 		url, found := srv.cache.Get(state)
 		if !found {
-			http.Error(w, "Unknown state "+state, http.StatusMethodNotAllowed)
+			srv.log.Warnf("Unknown state: %s", state)
+			http.Error(w, "Unknown state", http.StatusNotAcceptable)
 			return
 		}
 		srv.cache.Delete(state)
-
-		token := srv.getToken(w, code)
-
+		token, err := srv.getToken(w, code)
+		if err != nil {
+			srv.log.Warnf("Token error: %w", err)
+			http.Error(w, "Token error", http.StatusNotAcceptable)
+			return
+		}
 		// load usernames from gitea
-		ids := srv.getMeta(w, token)
+		ids, err := srv.getMeta(w, *token)
+		if err != nil {
+			srv.log.Warnf("Meta error: %w", err)
+			http.Error(w, "Meta error", http.StatusNotAcceptable)
+			return
+		}
 		if len(*ids) == 0 {
+			srv.log.Warnf("User ID list is empty")
+			http.Error(w, "User ID list is empty", http.StatusNotAcceptable)
 			return
 		}
 		srv.log.Debugf("Meta IDs: %v", ids)
@@ -310,7 +235,6 @@ func (srv *Service) Stage2Handler() http.Handler {
 				Value: encoded,
 				Path:  "/",
 			}
-
 			if srv.Config.CookieDomain != "" {
 				cookie.Domain = srv.Config.CookieDomain
 			}
@@ -318,10 +242,91 @@ func (srv *Service) Stage2Handler() http.Handler {
 			srv.log.Debugf("All OK, redir to %s", url)
 			http.Redirect(w, r, url.(string), http.StatusFound)
 		} else {
-			srv.log.Debugf("Cookie encode error", err)
+			srv.log.Warnf("Cookie encode error: %w", err)
+			http.Error(w, "Cookie encode error", http.StatusNotAcceptable)
 		}
 	}
 	return http.HandlerFunc(fn)
+}
+
+// getToken fetches user token from auth server
+func (srv *Service) getToken(w http.ResponseWriter, code string) (*string, error) {
+	// Mattermost does not support "application/json" so use form
+	data := url.Values{
+		"client_id":     []string{srv.Config.ClientID},
+		"client_secret": []string{srv.Config.ClientKey},
+		"code":          []string{code},
+		"grant_type":    []string{"authorization_code"},
+		"redirect_uri":  []string{srv.Config.MyURL + srv.Config.CallBackURL},
+	}
+	resp, err := http.Post(srv.Config.Host+srv.provider.Token, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("POST create error: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Not OK with POST token request, status: %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	var meta map[string]string
+	json.NewDecoder(resp.Body).Decode(&meta)
+	token := meta["access_token"]
+	if token == "" {
+		return nil, fmt.Errorf("No token in AS responce")
+	}
+	return &token, nil
+}
+
+// getMeta fetches user metadata from auth server
+func (srv *Service) getMeta(w http.ResponseWriter, token string) (*[]string, error) {
+	client := &http.Client{}
+	// get username
+	req, err := http.NewRequest("GET", srv.Config.Host+srv.provider.User, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GET user request create error: %w", err)
+	}
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET user request error: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Not OK with POST user request, status: %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	var user map[string]string
+	json.NewDecoder(resp.Body).Decode(&user)
+	srv.log.Debugf("User: %+v", user)
+	tags := []string{user["username"]}
+
+	if len(srv.Config.Team) == 0 {
+		// no team check
+		return &tags, nil
+	}
+	// get user groups
+	url := srv.provider.Team
+	if strings.Contains(url, "%s") {
+		// mattermost wants user id in URL
+		url = fmt.Sprintf(url, user["id"])
+	}
+	req, err = http.NewRequest("GET", srv.Config.Host+url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GET team request create error: %w", err)
+	}
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
+	resp, err = client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET team request error: %w", err)
+	}
+	defer resp.Body.Close()
+	var orgs []map[string]string
+	err = json.NewDecoder(resp.Body).Decode(&orgs)
+	srv.log.Printf("Resp: %+v", orgs)
+	for _, o := range orgs {
+		tags = append(tags, o[srv.provider.TeamName])
+	}
+	return &tags, nil
 }
 
 // Check if str exists in strings slice
