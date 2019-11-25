@@ -30,13 +30,13 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command:
-      --host ${APP_PROTO}://${APP_SITE}
+      --as.my_url ${APP_PROTO}://${APP_SITE} --debug
     environment:
-      - AS_TYPE=${AS_TYPE}
-      - AS_HOST=${AS_HOST}
-      - AS_TEAM=${AS_TEAM}
-      - AS_CLIENT_ID=${AS_CLIENT_ID}
-      - AS_CLIENT_KEY=${AS_CLIENT_KEY}
+      - TYPE=${AS_TYPE}
+      - HOST=${AS_HOST}
+      - TEAM=${AS_TEAM}
+      - CLIENT_ID=${AS_CLIENT_ID}
+      - CLIENT_KEY=${AS_CLIENT_KEY}
       - COOKIE_SIGN_KEY=${COOKIE_SIGN_KEY}
       - COOKIE_CRYPT_KEY=${COOKIE_CRYPT_KEY}
 

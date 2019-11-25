@@ -2,7 +2,8 @@ SHELL          = /bin/bash
 CFG           ?= .env
 PRG           ?= $(shell basename $$PWD)
 
-SOURCES       ?= *.go
+VERSION       ?= $(shell git describe --tags)
+SOURCES       ?= *.go cmd/*/*.go
 
 APP_SITE      ?= $(PRG).dev.lan
 APP_PROTO     ?= http
@@ -56,11 +57,11 @@ export
 all: help
 
 $(PRG): $(SOURCES)
-	go build
+	go build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
 
 run: $(PRG)
-	CLIENT_ID=$(CLIENT_ID) CLIENT_KEY=$(CLIENT_KEY) \
-	./$(PRG) --gitea_host http://git.dev.lan --cookie_sign $(SIGN_KEY) --cookie_crypt $(CRYPT_KEY)
+	AS_CLIENT_ID=$(AS_CLIENT_ID) AS_CLIENT_KEY=$(AS_CLIENT_KEY) \
+	./$(PRG) --as.host http://git.dev.lan --as.cookie_sign $(COOKIE_SIGN_KEY) --as.cookie_crypt $(COOKIE_CRYPT_KEY)
 
 ## Format go sources
 fmt:
