@@ -8,6 +8,6 @@
 .glide/
 
 # bin
-./narra
+/narra
 
 .env*
