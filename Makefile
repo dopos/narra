@@ -1,4 +1,5 @@
 SHELL          = /bin/bash
+GO            ?= go
 CFG           ?= .env
 PRG           ?= $(shell basename $$PWD)
 
@@ -57,7 +58,7 @@ export
 all: help
 
 $(PRG): $(SOURCES)
-	go build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
+	$(GO) build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
 
 run: $(PRG)
 	AS_CLIENT_ID=$(AS_CLIENT_ID) AS_CLIENT_KEY=$(AS_CLIENT_KEY) \
