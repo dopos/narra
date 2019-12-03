@@ -23,12 +23,16 @@ func run(exitFunc func(code int)) {
 	l := setupLog(cfg.Debug)
 	r := setupRouter(narra.New(cfg.AuthServer, l))
 	l.Debugf("Config: %+v", cfg)
+
 	srv := &http.Server{
 		Addr:    cfg.Listen,
 		Handler: r,
 	}
 
+	// Graceful shutdown:
 	// http://stackoverflow.com/questions/18106749/golang-catch-signals
+	// https://medium.com/honestbee-tw-engineer/gracefully-shutdown-in-go-http-server-5f5e6b83da5a
+
 	done := make(chan os.Signal, 2)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -48,13 +52,13 @@ func run(exitFunc func(code int)) {
 	}()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		l.Fatalf("Server Shutdown Failed:%+v", err)
+		l.Fatalf("Server Shutdown Failed: %+v", err)
 	}
 	l.Print("Server Exited Properly")
 
 }
 
-// exit after deferred cleanups have run
+// exit after deferred cleanups have run or when work was cancelled on config load
 func shutdown(exitFunc func(code int), e error) {
 	if e != nil {
 		var code int
