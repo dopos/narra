@@ -1,7 +1,6 @@
 package narra
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/json-iterator/go"
 	"github.com/patrickmn/go-cache"
 	"gopkg.in/birkirb/loggers.v1"
 	"gopkg.in/gorilla/securecookie.v1"
@@ -19,7 +19,9 @@ type Config struct {
 	MyURL       string `long:"my_url" default:"http://narra.dev.lan" description:"Own host URL"`
 	CallBackURL string `long:"cb_url" default:"/login" description:"URL for Auth server's redirect"`
 
-	Type      string `long:"type" env:"TYPE" default:"gitea"  choice:"gitea" choice:"mmost" description:"Authorization Server type (gitea|mmost)"`
+	//nolint:staticcheck // Multiple struct tag "choice" is allowed
+	Type string `long:"type" env:"TYPE" default:"gitea"  choice:"gitea" choice:"mmost" description:"Authorization Server type (gitea|mmost)"`
+
 	Host      string `long:"host" env:"HOST" default:"http://gitea:8080" description:"Authorization Server host"`
 	Team      string `long:"team" env:"TEAM" default:"dcape" description:"Authorization Server team which members has access to resource"`
 	ClientID  string `long:"client_id" env:"CLIENT_ID" description:"Authorization Server Client ID"`
@@ -197,6 +199,7 @@ func (srv *Service) Stage2Handler() http.Handler {
 		code := r.FormValue("code")
 		state := r.FormValue("state")
 		// TODO: r.FormValue("error")
+		// error=invalid_request&error_description
 		srv.log.Debugf("Auth data: (%s:%s)", code, state)
 		if code == "" || state == "" {
 			http.Error(w, "auth not granted", http.StatusExpectationFailed)
@@ -268,7 +271,10 @@ func (srv *Service) getToken(w http.ResponseWriter, code string) (*string, error
 	}
 	defer resp.Body.Close()
 	var meta map[string]string
-	json.NewDecoder(resp.Body).Decode(&meta)
+	err = jsoniter.NewDecoder(resp.Body).Decode(&meta)
+	if err != nil {
+		return nil, fmt.Errorf("Parse token response error: %w", err)
+	}
 	token := meta["access_token"]
 	if token == "" {
 		return nil, fmt.Errorf("No token in AS responce")
@@ -295,7 +301,10 @@ func (srv *Service) getMeta(w http.ResponseWriter, token string) (*[]string, err
 	}
 	defer resp.Body.Close()
 	var user map[string]string
-	json.NewDecoder(resp.Body).Decode(&user)
+	err = jsoniter.NewDecoder(resp.Body).Decode(&user)
+	if err != nil {
+		return nil, fmt.Errorf("Parse user response error: %w", err)
+	}
 	srv.log.Debugf("User: %+v", user)
 	tags := []string{user["username"]}
 
@@ -321,8 +330,11 @@ func (srv *Service) getMeta(w http.ResponseWriter, token string) (*[]string, err
 	}
 	defer resp.Body.Close()
 	var orgs []map[string]string
-	err = json.NewDecoder(resp.Body).Decode(&orgs)
-	srv.log.Printf("Resp: %+v", orgs)
+	err = jsoniter.NewDecoder(resp.Body).Decode(&orgs)
+	if err != nil {
+		return nil, fmt.Errorf("Parse team response error: %w", err)
+	}
+	srv.log.Debugf("Resp: %+v", orgs)
 	for _, o := range orgs {
 		tags = append(tags, o[srv.provider.TeamName])
 	}
