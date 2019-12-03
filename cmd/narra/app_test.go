@@ -18,7 +18,7 @@ func TestRun(t *testing.T) {
 	}{
 		{"Help", 3, []string{"-h"}},
 		{"UnknownFlag", 2, []string{"-0"}},
-		{"UnknownPort", 1, []string{"--http_addr", ":xx"}},
+		{"UnknownPort", 1, []string{"--listen", ":xx"}},
 	}
 	for _, tt := range tests {
 		os.Args = append([]string{a[0]}, tt.args...)
