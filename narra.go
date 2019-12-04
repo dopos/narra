@@ -1,15 +1,16 @@
 package narra
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/json-iterator/go"
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/oauth2"
 	"gopkg.in/birkirb/loggers.v1"
 	"gopkg.in/gorilla/securecookie.v1"
 )
@@ -48,6 +49,7 @@ type ProviderConfig struct {
 type Service struct {
 	Config   Config
 	log      loggers.Contextual
+	api      *oauth2.Config
 	cookie   *securecookie.SecureCookie
 	cache    *cache.Cache
 	provider *ProviderConfig
@@ -120,18 +122,17 @@ func New(cfg Config, log loggers.Contextual, options ...Option) *Service {
 	if srv.provider == nil {
 		srv.provider = Providers[cfg.Type]
 	}
+	srv.api = &oauth2.Config{
+		ClientID:     srv.Config.ClientID,
+		ClientSecret: srv.Config.ClientKey,
+		//Scopes:       []string{"SCOPE1", "SCOPE2"},
+		RedirectURL: srv.Config.MyURL + srv.Config.CallBackURL,
+		Endpoint: oauth2.Endpoint{
+			TokenURL: srv.Config.Host + srv.provider.Token,
+			AuthURL:  srv.Config.Host + srv.provider.Auth,
+		},
+	}
 	return srv
-}
-
-// fetchToken fetches token from header or cookie
-func fetchToken(r *http.Request, header string, cookie string) string {
-	if auth := r.Header.Get(header); auth != "" {
-		return auth
-	}
-	if cookie, err := r.Cookie(cookie); err == nil {
-		return cookie.Value
-	}
-	return ""
 }
 
 // HTTP handler pattern, see
@@ -140,27 +141,50 @@ func fetchToken(r *http.Request, header string, cookie string) string {
 // AuthHandler is a Nginx auth_request handler
 func (srv *Service) AuthHandler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		token := fetchToken(r, srv.Config.AuthHeader, srv.Config.CookieName)
-		if token == "" {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
+		// Use the custom HTTP client when requesting a token.
+		var ids *[]string
+		var err error
+		if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
+			// server token
+			httpClient := &http.Client{Timeout: 2 * time.Second}
+			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+			client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+				AccessToken: auth,
+				TokenType:   "Bearer",
+			}))
+			ids, err = srv.getMeta(client)
+			if err != nil {
+				srv.log.Warnf("Get meta by header: %v", r.Header)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+		} else {
+			// own cookie
+			cookie, err := r.Cookie(srv.Config.CookieName)
+			if err != nil {
+				srv.error(w, http.StatusUnauthorized, fmt.Errorf("Cookie decode error: %w", err))
+				return
+			}
+			if err := srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids); err != nil {
+				srv.log.Error("Cookie decode error", err)
+				http.Error(w, "Cookie decode error", http.StatusUnauthorized)
+				return
+			}
 		}
-		srv.log.Debugf("Headers: %v", r.Header)
-		ids := []string{}
-		if err := srv.cookie.Decode(srv.Config.CookieName, token, &ids); err != nil {
-			srv.log.Error("Cookie encode error", err)
-			http.Error(w, "Cookie encode error", http.StatusInternalServerError)
-			return
-		}
-		if stringExists(ids, srv.Config.Team) {
-			srv.log.Debugf("User %s authorized", ids[0])
-			w.Header().Add("X-Username", ids[0])
+		if len(srv.Config.Team) == 0 || stringExists(ids, srv.Config.Team) {
+			srv.log.Debugf("User %s authorized", (*ids)[0])
+			w.Header().Add("X-Username", (*ids)[0])
 			w.WriteHeader(http.StatusOK)
 		} else {
-			http.Error(w, fmt.Sprintf("user %s is not in required team %s", ids[0], srv.Config.Team), http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("user %s is not in required team %s", (*ids)[0], srv.Config.Team), http.StatusForbidden)
 		}
 	}
 	return http.HandlerFunc(fn)
+}
+
+func (srv *Service) error(w http.ResponseWriter, status int, e error) {
+	srv.log.Warn(e)
+	http.Error(w, e.Error(), status)
 }
 
 // Stage1Handler handles 401 error & redirects user to auth server
@@ -168,31 +192,21 @@ func (srv *Service) Stage1Handler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		uuid, err := uuid.NewRandom()
 		if err != nil {
-			srv.log.Fatal("Gen error:", err)
+			srv.log.Error("UUID Generate error: ", err)
+			http.Error(w, "UUID Generate error", http.StatusServiceUnavailable)
+			return
 		}
 		url := r.Header.Get("X-Original-Uri")
 		srv.log.Debugf("UUID: %s URI:%+v\n", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
-		req, err := http.NewRequest("GET", srv.Config.Host+srv.provider.Auth, nil)
-		if err != nil {
-			srv.log.Errorf("Request create error: %v", err)
-			http.Error(w, "Request create error", http.StatusInternalServerError)
-			return
-		}
-		q := req.URL.Query()
-		q.Add("client_id", srv.Config.ClientID)
-		q.Add("redirect_uri", srv.Config.MyURL+srv.Config.CallBackURL)
-		q.Add("response_type", "code")
-		q.Add("state", uuid.String())
-		req.URL.RawQuery = q.Encode()
-
-		srv.log.Debugf("Redir to %s", req.URL.String())
-		http.Redirect(w, r, req.URL.String(), http.StatusFound)
+		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
+		srv.log.Debugf("Redir to %s", redirect)
+		http.Redirect(w, r, redirect, http.StatusFound)
 	}
 	return http.HandlerFunc(fn)
 }
 
-// Stage2Handler handles redirect from auth provider
+// Stage2Handler handles redirect from auth provider,
 // fetches token & user info
 func (srv *Service) Stage2Handler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
@@ -202,36 +216,39 @@ func (srv *Service) Stage2Handler() http.Handler {
 		// error=invalid_request&error_description
 		srv.log.Debugf("Auth data: (%s:%s)", code, state)
 		if code == "" || state == "" {
-			http.Error(w, "auth not granted", http.StatusExpectationFailed)
+			http.Error(w, "Auth not granted", http.StatusServiceUnavailable)
 			return
 		}
 		url, found := srv.cache.Get(state)
 		if !found {
-			srv.log.Warnf("Unknown state: %s", state)
-			http.Error(w, "Unknown state", http.StatusNotAcceptable)
+			http.Error(w, "Unknown state", http.StatusServiceUnavailable)
 			return
 		}
 		srv.cache.Delete(state)
-		token, err := srv.getToken(w, code)
+
+		// Use the custom HTTP client when requesting a token.
+		httpClient := &http.Client{Timeout: 2 * time.Second}
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+
+		tok, err := srv.api.Exchange(ctx, code)
 		if err != nil {
-			srv.log.Warnf("Token error: %w", err)
-			http.Error(w, "Token error", http.StatusNotAcceptable)
+			srv.log.Warn(fmt.Errorf("Token fetch failed: %w", err))
+			http.Error(w, "Token fetch failed", http.StatusServiceUnavailable)
 			return
 		}
-		// load usernames from gitea
-		ids, err := srv.getMeta(w, *token)
+
+		client := srv.api.Client(ctx, tok)
+
+		// load usernames from provider
+		ids, err := srv.getMeta(client)
 		if err != nil {
-			srv.log.Warnf("Meta error: %w", err)
-			http.Error(w, "Meta error", http.StatusNotAcceptable)
+			srv.log.Warnf("Meta fetch failed: %v", err)
+			http.Error(w, "Meta fetch failed", http.StatusServiceUnavailable)
 			return
 		}
-		if len(*ids) == 0 {
-			srv.log.Warnf("User ID list is empty")
-			http.Error(w, "User ID list is empty", http.StatusNotAcceptable)
-			return
-		}
+
 		srv.log.Debugf("Meta IDs: %v", ids)
-		// store usernames in cookie
+		// store ids in cookie
 		if encoded, err := srv.cookie.Encode(srv.Config.CookieName, &ids); err == nil {
 			cookie := &http.Cookie{
 				Name:  srv.Config.CookieName,
@@ -245,106 +262,73 @@ func (srv *Service) Stage2Handler() http.Handler {
 			srv.log.Debugf("All OK, redir to %s", url)
 			http.Redirect(w, r, url.(string), http.StatusFound)
 		} else {
-			srv.log.Warnf("Cookie encode error: %w", err)
-			http.Error(w, "Cookie encode error", http.StatusNotAcceptable)
+			srv.log.Warnf("Cookie encode error: %v", err)
+			http.Error(w, "Cookie encode error", http.StatusServiceUnavailable)
 		}
 	}
 	return http.HandlerFunc(fn)
 }
 
-// getToken fetches user token from auth server
-func (srv *Service) getToken(w http.ResponseWriter, code string) (*string, error) {
-	// Mattermost does not support "application/json" so use form
-	data := url.Values{
-		"client_id":     []string{srv.Config.ClientID},
-		"client_secret": []string{srv.Config.ClientKey},
-		"code":          []string{code},
-		"grant_type":    []string{"authorization_code"},
-		"redirect_uri":  []string{srv.Config.MyURL + srv.Config.CallBackURL},
-	}
-	resp, err := http.Post(srv.Config.Host+srv.provider.Token, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+func (srv *Service) request(client *http.Client, url string, data interface{}) error {
+	req, err := http.NewRequest("GET", srv.Config.Host+url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("POST create error: %w", err)
+		return fmt.Errorf("Request create error: %w", err)
+	}
+	req.Header.Add("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Request error: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Not OK with POST token request, status: %d", resp.StatusCode)
+		return fmt.Errorf("Not OK with request, status: %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
-	var meta map[string]string
-	err = jsoniter.NewDecoder(resp.Body).Decode(&meta)
+	err = jsoniter.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return nil, fmt.Errorf("Parse token response error: %w", err)
+		return fmt.Errorf("Parse response error: %w", err)
 	}
-	token := meta["access_token"]
-	if token == "" {
-		return nil, fmt.Errorf("No token in AS responce")
-	}
-	return &token, nil
+	return nil
 }
 
 // getMeta fetches user metadata from auth server
-func (srv *Service) getMeta(w http.ResponseWriter, token string) (*[]string, error) {
-	client := &http.Client{}
+func (srv *Service) getMeta(client *http.Client) (*[]string, error) {
 	// get username
-	req, err := http.NewRequest("GET", srv.Config.Host+srv.provider.User, nil)
+	var user map[string]interface{}
+	err := srv.request(client, srv.provider.User, &user)
 	if err != nil {
-		return nil, fmt.Errorf("GET user request create error: %w", err)
-	}
-	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GET user request error: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Not OK with POST user request, status: %d", resp.StatusCode)
-	}
-	defer resp.Body.Close()
-	var user map[string]string
-	err = jsoniter.NewDecoder(resp.Body).Decode(&user)
-	if err != nil {
-		return nil, fmt.Errorf("Parse user response error: %w", err)
+		return nil, fmt.Errorf("Get user metadata: %w", err)
 	}
 	srv.log.Debugf("User: %+v", user)
-	tags := []string{user["username"]}
+	tags := []string{user["username"].(string)}
 
 	if len(srv.Config.Team) == 0 {
 		// no team check
 		return &tags, nil
 	}
-	// get user groups
+	// get user teams
 	url := srv.provider.Team
 	if strings.Contains(url, "%s") {
 		// mattermost wants user id in URL
 		url = fmt.Sprintf(url, user["id"])
 	}
-	req, err = http.NewRequest("GET", srv.Config.Host+url, nil)
+
+	var orgs []map[string]interface{}
+	err = srv.request(client, url, &orgs)
 	if err != nil {
-		return nil, fmt.Errorf("GET team request create error: %w", err)
+		return nil, fmt.Errorf("Get team metadata: %w", err)
 	}
-	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Authorization", srv.provider.TokenPrefix+token)
-	resp, err = client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GET team request error: %w", err)
-	}
-	defer resp.Body.Close()
-	var orgs []map[string]string
-	err = jsoniter.NewDecoder(resp.Body).Decode(&orgs)
-	if err != nil {
-		return nil, fmt.Errorf("Parse team response error: %w", err)
-	}
-	srv.log.Debugf("Resp: %+v", orgs)
+
 	for _, o := range orgs {
-		tags = append(tags, o[srv.provider.TeamName])
+		tags = append(tags, o[srv.provider.TeamName].(string))
 	}
+	srv.log.Debugf("Tags: %+v", tags)
 	return &tags, nil
 }
 
 // Check if str exists in strings slice
-func stringExists(strings []string, str string) bool {
-	if len(strings) > 0 {
-		for _, s := range strings {
+func stringExists(strings *[]string, str string) bool {
+	if len(*strings) > 0 {
+		for _, s := range *strings {
 			if str == s {
 				return true
 			}
