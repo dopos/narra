@@ -2,15 +2,14 @@ FROM golang:1.13.4-alpine3.10
 
 MAINTAINER Alexey Kovrizhkin <lekovr+dopos@gmail.com>
 
-ENV        NARRA_VERSION 0.5
+ENV        NARRA_VERSION 0.7
+
+RUN apk add --no-cache git curl
 
 WORKDIR /opt/narra
 COPY . .
 
-RUN apk add --no-cache git curl
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=`git describe --tags`" -a ./cmd/narra
-
-
 
 FROM scratch
 
