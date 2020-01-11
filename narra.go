@@ -2,6 +2,7 @@ package narra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,7 +16,9 @@ import (
 	"gopkg.in/gorilla/securecookie.v1"
 )
 
-// Config holds program options
+// codebeat:disable[TOO_MANY_IVARS]
+
+// Config holds package options and constants
 type Config struct {
 	MyURL       string `long:"my_url" default:"http://narra.dev.lan" description:"Own host URL"`
 	CallBackURL string `long:"cb_url" default:"/login" description:"URL for Auth server's redirect"`
@@ -45,6 +48,8 @@ type ProviderConfig struct {
 	TeamName    string
 }
 
+// codebeat:enable[TOO_MANY_IVARS]
+
 // Service holds service attributes
 type Service struct {
 	Config   Config
@@ -54,6 +59,12 @@ type Service struct {
 	cache    *cache.Cache
 	provider *ProviderConfig
 }
+
+var (
+	ErrNoTeam         = errors.New("User is not in required team")
+	ErrAuthNotGranted = errors.New("Auth not granted")
+	ErrStateUnknown   = errors.New("Unknown state")
+)
 
 //Functional options
 //https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md
@@ -162,12 +173,11 @@ func (srv *Service) AuthHandler() http.Handler {
 			// own cookie
 			cookie, err := r.Cookie(srv.Config.CookieName)
 			if err != nil {
-				srv.error(w, http.StatusUnauthorized, fmt.Errorf("Cookie decode error: %w", err))
+				srv.warn(w, fmt.Errorf("Cookie read error: %w", err), http.StatusUnauthorized)
 				return
 			}
 			if err := srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids); err != nil {
-				srv.log.Error("Cookie decode error", err)
-				http.Error(w, "Cookie decode error", http.StatusUnauthorized)
+				srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
 				return
 			}
 		}
@@ -176,15 +186,10 @@ func (srv *Service) AuthHandler() http.Handler {
 			w.Header().Add("X-Username", (*ids)[0])
 			w.WriteHeader(http.StatusOK)
 		} else {
-			http.Error(w, fmt.Sprintf("user %s is not in required team %s", (*ids)[0], srv.Config.Team), http.StatusForbidden)
+			srv.warn(w, fmt.Errorf("User %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), http.StatusForbidden)
 		}
 	}
 	return http.HandlerFunc(fn)
-}
-
-func (srv *Service) error(w http.ResponseWriter, status int, e error) {
-	srv.log.Warn(e)
-	http.Error(w, e.Error(), status)
 }
 
 // Stage1Handler handles 401 error & redirects user to auth server
@@ -210,40 +215,10 @@ func (srv *Service) Stage1Handler() http.Handler {
 // fetches token & user info
 func (srv *Service) Stage2Handler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		code := r.FormValue("code")
-		state := r.FormValue("state")
-		// TODO: r.FormValue("error")
-		// error=invalid_request&error_description
-		srv.log.Debugf("Auth data: (%s:%s)", code, state)
-		if code == "" || state == "" {
-			http.Error(w, "Auth not granted", http.StatusServiceUnavailable)
-			return
-		}
-		url, found := srv.cache.Get(state)
-		if !found {
-			http.Error(w, "Unknown state", http.StatusServiceUnavailable)
-			return
-		}
-		srv.cache.Delete(state)
 
-		// Use the custom HTTP client when requesting a token.
-		httpClient := &http.Client{Timeout: 2 * time.Second}
-		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
-
-		tok, err := srv.api.Exchange(ctx, code)
+		url, ids, err := srv.processMeta(r)
 		if err != nil {
-			srv.log.Warn(fmt.Errorf("Token fetch failed: %w", err))
-			http.Error(w, "Token fetch failed", http.StatusServiceUnavailable)
-			return
-		}
-
-		client := srv.api.Client(ctx, tok)
-
-		// load usernames from provider
-		ids, err := srv.getMeta(client)
-		if err != nil {
-			srv.log.Warnf("Meta fetch failed: %v", err)
-			http.Error(w, "Meta fetch failed", http.StatusServiceUnavailable)
+			srv.warn(w, fmt.Errorf("Meta processing failed: %w", err), http.StatusServiceUnavailable)
 			return
 		}
 
@@ -260,10 +235,9 @@ func (srv *Service) Stage2Handler() http.Handler {
 			}
 			http.SetCookie(w, cookie)
 			srv.log.Debugf("All OK, redir to %s", url)
-			http.Redirect(w, r, url.(string), http.StatusFound)
+			http.Redirect(w, r, url, http.StatusFound)
 		} else {
-			srv.log.Warnf("Cookie encode error: %v", err)
-			http.Error(w, "Cookie encode error", http.StatusServiceUnavailable)
+			srv.warn(w, fmt.Errorf("Cookie encode error: %w", err), http.StatusServiceUnavailable)
 		}
 	}
 	return http.HandlerFunc(fn)
@@ -325,6 +299,41 @@ func (srv *Service) getMeta(client *http.Client) (*[]string, error) {
 	return &tags, nil
 }
 
+func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err error) {
+	code := r.FormValue("code")
+	state := r.FormValue("state")
+	// TODO: r.FormValue("error")
+	// error=invalid_request&error_description
+	srv.log.Debugf("Auth data: (%s:%s)", code, state)
+	if code == "" || state == "" {
+		err = ErrAuthNotGranted
+		return
+	}
+	urlIface, found := srv.cache.Get(state)
+	if !found {
+		err = ErrStateUnknown
+		return
+	}
+	srv.cache.Delete(state)
+	url = urlIface.(string)
+
+	// Use the custom HTTP client when requesting a token.
+	httpClient := &http.Client{Timeout: 2 * time.Second}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+
+	tok, err := srv.api.Exchange(ctx, code)
+	if err != nil {
+		err = fmt.Errorf("Token fetch failed: %w", err)
+		return
+	}
+
+	client := srv.api.Client(ctx, tok)
+
+	// load usernames from provider
+	ids, err = srv.getMeta(client)
+	return
+}
+
 // Check if str exists in strings slice
 func stringExists(strings *[]string, str string) bool {
 	if len(*strings) > 0 {
@@ -335,4 +344,14 @@ func stringExists(strings *[]string, str string) bool {
 		}
 	}
 	return false
+}
+
+func (srv *Service) warn(w http.ResponseWriter, e error, status int) {
+	srv.log.Warn(e)
+	http.Error(w, e.Error(), status)
+}
+
+func (srv *Service) error(w http.ResponseWriter, e error, status int) {
+	srv.log.Error(e)
+	http.Error(w, e.Error(), status)
 }
