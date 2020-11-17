@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/oauth2"
 	"gopkg.in/birkirb/loggers.v1"
@@ -24,18 +24,21 @@ type Config struct {
 	CallBackURL string `long:"cb_url" default:"/login" description:"URL for Auth server's redirect"`
 
 	//nolint:staticcheck // Multiple struct tag "choice" is allowed
-	Type string `long:"type" env:"TYPE" default:"gitea"  choice:"gitea" choice:"mmost" description:"Authorization Server type (gitea|mmost)"`
-
+	Type      string `long:"type" env:"TYPE" default:"gitea"  choice:"gitea" choice:"mmost" description:"Authorization Server type (gitea|mmost)"`
+	Do401     bool   `long:"do401" env:"DO401" description:"Do not redirect with http.StatusUnauthorized, process it itself"`
 	Host      string `long:"host" env:"HOST" default:"http://gitea:8080" description:"Authorization Server host"`
 	Team      string `long:"team" env:"TEAM" default:"dcape" description:"Authorization Server team which members has access to resource"`
-	ClientID  string `long:"client_id" env:"CLIENT_ID" description:"Authorization Server Client ID"`
-	ClientKey string `long:"client_key" env:"CLIENT_KEY" description:"Authorization Server Client key"`
+	ClientID  string `long:"client_id" env:"AS_CLIENT_ID" description:"Authorization Server Client ID"`
+	ClientKey string `long:"client_key" env:"AS_CLIENT_KEY" description:"Authorization Server Client key"`
 
 	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use token from this header if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
 	CookieName     string `long:"cookie_name" default:"narra_token" description:"Auth cookie name"`
 	CookieSignKey  string `long:"cookie_sign" env:"COOKIE_SIGN_KEY" description:"Cookie sign key (32 or 64 bytes)"`
 	CookieCryptKey string `long:"cookie_crypt" env:"COOKIE_CRYPT_KEY" description:"Cookie crypt key (16, 24, or 32 bytes)"`
+
+	URLHeader  string `long:"url_header" env:"URL_HEADER" default:"X-Original-Uri" description:"HTTP Request Header for original URL"`
+	UserHeader string `long:"user_header" env:"USER_HEADER" default:"X-Username" description:"HTTP Response Header for username"`
 }
 
 // ProviderConfig holds Authorization Server properties
@@ -154,36 +157,40 @@ func (srv *Service) AuthHandler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		// Use the custom HTTP client when requesting a token.
 		var ids *[]string
-		var err error
 		if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
-			// server token
-			httpClient := &http.Client{Timeout: 2 * time.Second}
-			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
-			client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
-				AccessToken: auth,
-				TokenType:   "Bearer",
-			}))
-			ids, err = srv.getMeta(client)
-			if err != nil {
-				srv.log.Warnf("Get meta by header: %v", r.Header)
-				w.WriteHeader(http.StatusUnauthorized)
+			// get SecureCookie from header
+			if err := srv.cookie.Decode(srv.Config.CookieName, auth, &ids); err != nil {
+				if srv.Config.Do401 {
+					srv.Stage1Handler().ServeHTTP(w, r) // like 401 in nginx
+				} else {
+					srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
+				}
 				return
 			}
 		} else {
 			// own cookie
 			cookie, err := r.Cookie(srv.Config.CookieName)
 			if err != nil {
-				srv.warn(w, fmt.Errorf("Cookie read error: %w", err), http.StatusUnauthorized)
+				if srv.Config.Do401 {
+					srv.Stage1Handler().ServeHTTP(w, r) // like 401 in nginx
+				} else {
+					srv.warn(w, fmt.Errorf("Cookie read error: %w", err), http.StatusUnauthorized)
+				}
 				return
 			}
 			if err := srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids); err != nil {
-				srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
+				// TODO: Cookie decode error: securecookie: expired timestamp
+				if srv.Config.Do401 {
+					srv.Stage1Handler().ServeHTTP(w, r) // cookie expired etc
+				} else {
+					srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
+				}
 				return
 			}
 		}
 		if len(srv.Config.Team) == 0 || stringExists(ids, srv.Config.Team) {
 			srv.log.Debugf("User %s authorized", (*ids)[0])
-			w.Header().Add("X-Username", (*ids)[0])
+			w.Header().Add(srv.Config.UserHeader, (*ids)[0])
 			w.WriteHeader(http.StatusOK)
 		} else {
 			srv.warn(w, fmt.Errorf("User %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), http.StatusForbidden)
@@ -201,8 +208,8 @@ func (srv *Service) Stage1Handler() http.Handler {
 			http.Error(w, "UUID Generate error", http.StatusServiceUnavailable)
 			return
 		}
-		url := r.Header.Get("X-Original-Uri")
-		srv.log.Debugf("UUID: %s URI:%+v\n", uuid.String(), url)
+		url := r.Header.Get(srv.Config.URLHeader)
+		srv.log.Debugf("UUID: %s Original URL:%+v\n", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
 		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
 		srv.log.Debugf("Redir to %s", redirect)
@@ -234,7 +241,7 @@ func (srv *Service) Stage2Handler() http.Handler {
 				cookie.Domain = srv.Config.CookieDomain
 			}
 			http.SetCookie(w, cookie)
-			srv.log.Debugf("All OK, redir to %s", url)
+			srv.log.Debugf("All OK, set cookie for %s, redir to %s", srv.Config.CookieDomain, url)
 			http.Redirect(w, r, url, http.StatusFound)
 		} else {
 			srv.warn(w, fmt.Errorf("Cookie encode error: %w", err), http.StatusServiceUnavailable)
@@ -327,6 +334,7 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 		return
 	}
 
+	srv.log.Debugf("API token: %s", tok)
 	client := srv.api.Client(ctx, tok)
 
 	// load usernames from provider

@@ -62,7 +62,8 @@ $(PRG): $(SOURCES)
 
 run: $(PRG)
 	AS_CLIENT_ID=$(AS_CLIENT_ID) AS_CLIENT_KEY=$(AS_CLIENT_KEY) \
-	./$(PRG) --as.host http://git.dev.lan --as.cookie_sign $(COOKIE_SIGN_KEY) --as.cookie_crypt $(COOKIE_CRYPT_KEY)
+	./$(PRG) --as.host $(AS_HOST) --as.cookie_sign $(COOKIE_SIGN_KEY) --as.cookie_crypt $(COOKIE_CRYPT_KEY) \
+	 --as.my_url http://$(APP_SITE):8080 --as.do401 --debug
 
 ## Format go sources
 fmt:
