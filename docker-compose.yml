@@ -11,13 +11,12 @@ services:
       - lan
     labels:
       - "traefik.enable=true"
-      - "traefik.frontend.rule=Host:${APP_SITE}"
-      - "traefik.port=80"
+      - "traefik.http.routers.narra-web.rule=Host(`${APP_SITE}`)"
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
-      - ./test:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${APP_ROOT}/test:/usr/share/nginx/html:ro
+      - ${APP_ROOT}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   narra-dev:
     image: narra
@@ -25,21 +24,26 @@ services:
     networks:
       - lan
     labels:
-      - "traefik.enable=false"
+      - "traefik.enable=true"
+      - "traefik.http.routers.narra-dev.rule=Host(`${APP_SITE}`) && Path(`/login`,`/auth`,`/401/`)"
+      - "traefik.http.services.narra-dev.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.narra-dev.forwardauth.address=http://${APP_SITE}/auth"
+      - "traefik.http.middlewares.narra-dev.forwardauth.authResponseHeaders=X-Username"
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command:
-      --as.my_url ${APP_PROTO}://${APP_SITE}
+      --debug --as.my_url ${APP_PROTO}://${APP_SITE}
+# For traefik:
+# --as.url_header X-Forwarded-Uri  --as.do401 
     environment:
-      - TYPE=${AS_TYPE}
-      - HOST=${AS_HOST}
-      - TEAM=${AS_TEAM}
-      - CLIENT_ID=${AS_CLIENT_ID}
-      - CLIENT_KEY=${AS_CLIENT_KEY}
-      - COOKIE_SIGN_KEY=${COOKIE_SIGN_KEY}
-      - COOKIE_CRYPT_KEY=${COOKIE_CRYPT_KEY}
-
+      - AS_TYPE
+      - AS_HOST
+      - AS_TEAM
+      - AS_CLIENT_ID
+      - AS_CLIENT_KEY
+      - AS_COOKIE_SIGN_KEY
+      - AS_COOKIE_CRYPT_KEY
     build:
       context: .
 
@@ -47,4 +51,3 @@ networks:
   lan:
     external:
       name: ${DCAPE_NET}
-

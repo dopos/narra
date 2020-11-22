@@ -1,11 +1,19 @@
 # narra
+
 nginx auth_request via remote api
 
-This program intended to be used with [nginx http auth_request module](https://nginx.ru/en/docs/http/ngx_http_auth_request_module.html) for users authentication.
+Project status: MVP
 
-Primary goal is to allow logins via [gitea](https://gitea.io) API, starting from v0.10 we support OAuth2 services like [gitea](https://gitea.io) or [mattermost](https://mattermost.com/).
+This program intended to be used for client authentication with
+* [nginx http auth_request module](https://nginx.ru/en/docs/http/ngx_http_auth_request_module.html)
+* [traefik ForwardAuth](https://doc.traefik.io/traefik/middlewares/forwardauth/)
 
-Since v0.20 this app can act as Traefik2 ForwardAuth service.
+OAuth2 services supported:
+
+* [gitea](https://gitea.io)
+* [mattermost](https://mattermost.com/)
+
+Also, narra accepts auth via header with Gitea Access Tokens for non-interactive use cases.
 
 Usage example available inside [dcape](https://github.com/dopos/dcape) project (see apps/cis there).
 
@@ -20,8 +28,18 @@ narra is available as docker image, see https://store.docker.com/community/image
 
 ### OAuth2 proxies
 
-* https://github.com/thomseddon/traefik-forward-auth (cannot be used while [This PR open](https://github.com/thomseddon/traefik-forward-auth/pull/159))
-* https://github.com/oauth2-proxy/oauth2-proxy (waiting for [This](https://github.com/oauth2-proxy/oauth2-proxy/issues/874) and probably more)
+* https://github.com/thomseddon/traefik-forward-auth (cannot be used while [this PR open](https://github.com/thomseddon/traefik-forward-auth/pull/159))
+* https://github.com/oauth2-proxy/oauth2-proxy (waiting for [this](https://github.com/oauth2-proxy/oauth2-proxy/issues/874) and probably more)
+* for nginx: https://github.com/vouch/vouch-proxy (waiting for [this](https://github.com/vouch/vouch-proxy/issues/180))
+* https://github.com/buzzfeed/sso
+* https://github.com/pomerium/pomerium
+* https://github.com/travisghansen/external-auth-server
+
+## History
+
+Primary goal is to allow logins via [gitea](https://gitea.io) API, starting from v0.10 we support OAuth2 services like [gitea](https://gitea.io) or [mattermost](https://mattermost.com/).
+
+Since v0.20 narra can act as Traefik2 ForwardAuth service.
 
 ## License
 

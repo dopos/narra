@@ -28,8 +28,8 @@ type Config struct {
 	Do401     bool   `long:"do401" env:"DO401" description:"Do not redirect with http.StatusUnauthorized, process it itself"`
 	Host      string `long:"host" env:"HOST" default:"http://gitea:8080" description:"Authorization Server host"`
 	Team      string `long:"team" env:"TEAM" default:"dcape" description:"Authorization Server team which members has access to resource"`
-	ClientID  string `long:"client_id" env:"AS_CLIENT_ID" description:"Authorization Server Client ID"`
-	ClientKey string `long:"client_key" env:"AS_CLIENT_KEY" description:"Authorization Server Client key"`
+	ClientID  string `long:"client_id" env:"CLIENT_ID" description:"Authorization Server Client ID"`
+	ClientKey string `long:"client_key" env:"CLIENT_KEY" description:"Authorization Server Client key"`
 
 	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use token from this header if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
@@ -64,9 +64,12 @@ type Service struct {
 }
 
 var (
-	ErrNoTeam         = errors.New("User is not in required team")
+	// ErrNoTeam holds error: User is not in required team
+	ErrNoTeam = errors.New("User is not in required team")
+	// ErrAuthNotGranted holds error: Auth not granted
 	ErrAuthNotGranted = errors.New("Auth not granted")
-	ErrStateUnknown   = errors.New("Unknown state")
+	// ErrStateUnknown holds error: Unknown state
+	ErrStateUnknown = errors.New("Unknown state")
 )
 
 //Functional options
@@ -158,32 +161,33 @@ func (srv *Service) AuthHandler() http.Handler {
 		// Use the custom HTTP client when requesting a token.
 		var ids *[]string
 		if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
-			// get SecureCookie from header
-			if err := srv.cookie.Decode(srv.Config.CookieName, auth, &ids); err != nil {
-				if srv.Config.Do401 {
-					srv.Stage1Handler().ServeHTTP(w, r) // like 401 in nginx
-				} else {
-					srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
-				}
+			// server token
+			httpClient := &http.Client{Timeout: 2 * time.Second}
+			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+			client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+				AccessToken: auth,
+				TokenType:   "Bearer",
+			}))
+			var err error
+			ids, err = srv.getMeta(client)
+			if err != nil {
+				srv.warn(w, fmt.Errorf("Get meta by header (%v) error: %w", r.Header, err), http.StatusUnauthorized)
 				return
 			}
 		} else {
 			// own cookie
 			cookie, err := r.Cookie(srv.Config.CookieName)
+			errMsg := "Cookie read error: %w"
+			if err == nil {
+				err = srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids)
+				// TODO: Cookie decode error: securecookie: expired timestamp
+				errMsg = "Cookie decode error: %w"
+			}
 			if err != nil {
 				if srv.Config.Do401 {
 					srv.Stage1Handler().ServeHTTP(w, r) // like 401 in nginx
 				} else {
-					srv.warn(w, fmt.Errorf("Cookie read error: %w", err), http.StatusUnauthorized)
-				}
-				return
-			}
-			if err := srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids); err != nil {
-				// TODO: Cookie decode error: securecookie: expired timestamp
-				if srv.Config.Do401 {
-					srv.Stage1Handler().ServeHTTP(w, r) // cookie expired etc
-				} else {
-					srv.error(w, fmt.Errorf("Cookie decode error: %w", err), http.StatusUnauthorized)
+					srv.warn(w, fmt.Errorf(errMsg, err), http.StatusUnauthorized)
 				}
 				return
 			}
@@ -212,7 +216,12 @@ func (srv *Service) Stage1Handler() http.Handler {
 		srv.log.Debugf("UUID: %s Original URL:%+v\n", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
 		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
+
+		// TODO: Who can use it?
+		// w.Header().Add("Www-Authenticate", fmt.Sprintf("Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:samalba/my-app:pull,push"
+
 		srv.log.Debugf("Redir to %s", redirect)
+		w.Header().Add("Content-type", "application/json")
 		http.Redirect(w, r, redirect, http.StatusFound)
 	}
 	return http.HandlerFunc(fn)
