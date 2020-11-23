@@ -89,8 +89,6 @@ cov: coverage.out
 coverage.out: $(SOURCES)
 	GIN_MODE=release $(GO) test -test.v -test.race -coverprofile=$@ -covermode=atomic ./...
 
-#	GIN_MODE=release $(GO) test -race -coverprofile=$@ -covermode=atomic -v ./...
-
 ## Open coverage report in browser
 cov-html: cov
 	$(GO) tool cover -html=coverage.out

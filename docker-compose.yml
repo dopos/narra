@@ -33,9 +33,9 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command:
-      --debug --as.my_url ${APP_PROTO}://${APP_SITE}
+      --debug --as.my_url ${APP_PROTO}://${APP_SITE} --as.cookie_name narra_dev_token
 # For traefik:
-# --as.url_header X-Forwarded-Uri  --as.do401 
+#  --as.do401
     environment:
       - AS_TYPE
       - AS_HOST

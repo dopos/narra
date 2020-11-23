@@ -37,7 +37,6 @@ type Config struct {
 	CookieSignKey  string `long:"cookie_sign" env:"COOKIE_SIGN_KEY" description:"Cookie sign key (32 or 64 bytes)"`
 	CookieCryptKey string `long:"cookie_crypt" env:"COOKIE_CRYPT_KEY" description:"Cookie crypt key (16, 24, or 32 bytes)"`
 
-	URLHeader  string `long:"url_header" env:"URL_HEADER" default:"X-Original-Uri" description:"HTTP Request Header for original URL"`
 	UserHeader string `long:"user_header" env:"USER_HEADER" default:"X-Username" description:"HTTP Response Header for username"`
 }
 
@@ -177,17 +176,19 @@ func (srv *Service) AuthHandler() http.Handler {
 		} else {
 			// own cookie
 			cookie, err := r.Cookie(srv.Config.CookieName)
-			errMsg := "Cookie read error: %w"
+			errMsg := "Cookie read error: %v"
 			if err == nil {
 				err = srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids)
-				// TODO: Cookie decode error: securecookie: expired timestamp
-				errMsg = "Cookie decode error: %w"
+				errMsg = "Cookie decode error: %v"
 			}
 			if err != nil {
+				srv.log.Debugf(errMsg, err)
 				if srv.Config.Do401 {
-					srv.Stage1Handler().ServeHTTP(w, r) // like 401 in nginx
+					// traefik wants redirect to provider
+					srv.Stage1Handler().ServeHTTP(w, r)
 				} else {
-					srv.warn(w, fmt.Errorf(errMsg, err), http.StatusUnauthorized)
+					// nginx wants 401
+					http.Error(w, err.Error(), http.StatusUnauthorized)
 				}
 				return
 			}
@@ -212,8 +213,12 @@ func (srv *Service) Stage1Handler() http.Handler {
 			http.Error(w, "UUID Generate error", http.StatusServiceUnavailable)
 			return
 		}
-		url := r.Header.Get(srv.Config.URLHeader)
-		srv.log.Debugf("UUID: %s Original URL:%+v\n", uuid.String(), url)
+		url := fmt.Sprintf("%s://%s%s",
+			r.Header.Get("X-Forwarded-Proto"),
+			r.Header.Get("X-Forwarded-Host"),
+			r.Header.Get("X-Forwarded-Uri"),
+		)
+		srv.log.Debugf("UUID: %s Original URL:%s", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
 		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
 
@@ -250,7 +255,7 @@ func (srv *Service) Stage2Handler() http.Handler {
 				cookie.Domain = srv.Config.CookieDomain
 			}
 			http.SetCookie(w, cookie)
-			srv.log.Debugf("All OK, set cookie for %s, redir to %s", srv.Config.CookieDomain, url)
+			srv.log.Debugf("All OK, set cookie for '%s', redir to %s", srv.Config.CookieDomain, url)
 			http.Redirect(w, r, url, http.StatusFound)
 		} else {
 			srv.warn(w, fmt.Errorf("Cookie encode error: %w", err), http.StatusServiceUnavailable)
@@ -365,10 +370,5 @@ func stringExists(strings *[]string, str string) bool {
 
 func (srv *Service) warn(w http.ResponseWriter, e error, status int) {
 	srv.log.Warn(e)
-	http.Error(w, e.Error(), status)
-}
-
-func (srv *Service) error(w http.ResponseWriter, e error, status int) {
-	srv.log.Error(e)
 	http.Error(w, e.Error(), status)
 }
