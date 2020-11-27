@@ -21,6 +21,11 @@ Usage example available inside [dcape](https://github.com/dopos/dcape) project (
 
 narra is available as docker image, see https://store.docker.com/community/images/dopos/narra
 
+## Use
+
+Chain of requests with warning `Cookie decode error: securecookie: the value is not valid ` in logfile means you have the same cookie for upper domain. 
+This is configuration problem and you should rename one of these cookies (see `--as.cookie_name`).
+
 ## See also
 
 * https://redbyte.eu/en/blog/using-the-nginx-auth-request-module/

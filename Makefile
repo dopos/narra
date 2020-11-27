@@ -64,7 +64,7 @@ $(PRG): $(SOURCES)
 	$(GO) build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
 
 run: $(PRG)
-	./$(PRG) --as.my_url http://$(APP_SITE):8080  --debug
+	./$(PRG) --as.my_url http://$(APP_SITE):8080 --fs.path ./test --fs.protect /private/ --as.do401  --debug
 
 ## Format go sources
 fmt:

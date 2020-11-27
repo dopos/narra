@@ -151,54 +151,61 @@ func New(cfg Config, log loggers.Contextual, options ...Option) *Service {
 	return srv
 }
 
+// AuthIsOK returns true if request is allowed to proceed
+func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request) bool {
+	// Use the custom HTTP client when requesting a token.
+	var ids *[]string
+	if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
+		// server token
+		httpClient := &http.Client{Timeout: 2 * time.Second}
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+		client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: auth,
+			TokenType:   "Bearer",
+		}))
+		var err error
+		ids, err = srv.getMeta(client)
+		if err != nil {
+			srv.warn(w, fmt.Errorf("Get meta by header (%v) error: %w", r.Header, err), http.StatusUnauthorized)
+			return false
+		}
+	} else {
+		// own cookie
+		cookie, err := r.Cookie(srv.Config.CookieName)
+		errMsg := "Cookie read error: %v"
+		if err == nil {
+			err = srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids)
+			errMsg = "Cookie decode error: %v"
+		}
+		if err != nil {
+			srv.log.Debugf(errMsg, err)
+			if srv.Config.Do401 {
+				// traefik wants redirect to provider
+				srv.Stage1Handler().ServeHTTP(w, r)
+			} else {
+				// nginx wants 401
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+			}
+			return false
+		}
+	}
+	if len(srv.Config.Team) == 0 || stringExists(ids, srv.Config.Team) {
+		srv.log.Debugf("User %s authorized", (*ids)[0])
+		w.Header().Add(srv.Config.UserHeader, (*ids)[0])
+		return true
+	}
+	srv.warn(w, fmt.Errorf("User %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), http.StatusForbidden)
+	return false
+}
+
 // HTTP handler pattern, see
 // https://www.alexedwards.net/blog/a-recap-of-request-handling
 
 // AuthHandler is a Nginx auth_request handler
 func (srv *Service) AuthHandler() http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		// Use the custom HTTP client when requesting a token.
-		var ids *[]string
-		if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
-			// server token
-			httpClient := &http.Client{Timeout: 2 * time.Second}
-			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
-			client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
-				AccessToken: auth,
-				TokenType:   "Bearer",
-			}))
-			var err error
-			ids, err = srv.getMeta(client)
-			if err != nil {
-				srv.warn(w, fmt.Errorf("Get meta by header (%v) error: %w", r.Header, err), http.StatusUnauthorized)
-				return
-			}
-		} else {
-			// own cookie
-			cookie, err := r.Cookie(srv.Config.CookieName)
-			errMsg := "Cookie read error: %v"
-			if err == nil {
-				err = srv.cookie.Decode(srv.Config.CookieName, cookie.Value, &ids)
-				errMsg = "Cookie decode error: %v"
-			}
-			if err != nil {
-				srv.log.Debugf(errMsg, err)
-				if srv.Config.Do401 {
-					// traefik wants redirect to provider
-					srv.Stage1Handler().ServeHTTP(w, r)
-				} else {
-					// nginx wants 401
-					http.Error(w, err.Error(), http.StatusUnauthorized)
-				}
-				return
-			}
-		}
-		if len(srv.Config.Team) == 0 || stringExists(ids, srv.Config.Team) {
-			srv.log.Debugf("User %s authorized", (*ids)[0])
-			w.Header().Add(srv.Config.UserHeader, (*ids)[0])
+		if srv.AuthIsOK(w, r) {
 			w.WriteHeader(http.StatusOK)
-		} else {
-			srv.warn(w, fmt.Errorf("User %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), http.StatusForbidden)
 		}
 	}
 	return http.HandlerFunc(fn)

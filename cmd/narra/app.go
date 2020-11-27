@@ -21,8 +21,12 @@ func run(exitFunc func(code int)) {
 		return
 	}
 	l := setupLog(cfg.Debug)
-	r := setupRouter(narra.New(cfg.AuthServer, l))
 	l.Debugf("Config: %+v", cfg)
+	auth := narra.New(cfg.AuthServer, l)
+	r := setupRouter(auth)
+	if cfg.FileServer.Path != "" {
+		r.Handle("/", FSHandler(cfg.FileServer, l, auth))
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.Listen,

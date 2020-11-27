@@ -18,6 +18,7 @@ type Config struct {
 	Debug  bool   `long:"debug" description:"Show debug info"`
 
 	AuthServer narra.Config `group:"Auth Service Options" namespace:"as" env-namespace:"AS"`
+	FileServer FSConfig     `group:"File Service Options" namespace:"fs" env-namespace:"FS"`
 }
 
 var (
@@ -61,6 +62,6 @@ func setupRouter(srv *narra.Service) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/auth", srv.AuthHandler())
 	mux.Handle(srv.Config.CallBackURL, srv.Stage2Handler())
-	mux.Handle("/", srv.Stage1Handler())
+	mux.Handle("/401/", srv.Stage1Handler())
 	return mux
 }
