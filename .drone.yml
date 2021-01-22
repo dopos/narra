@@ -10,4 +10,4 @@ steps:
       DOCKER_REGISTRY: https://ghcr.io
       DOCKER_USERNAME: LeKovr
       PLUGIN_TAGS: devel
-      PLUGIN_REPO: https://ghcr.io/dopos/dcape
+      PLUGIN_REPO: ghcr.io/dopos/dcape
