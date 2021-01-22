@@ -1,0 +1,13 @@
+kind: pipeline
+name: docker
+
+steps:
+  - name: build
+    image: plugins/docker
+    environment:
+      DOCKER_PASSWORD:
+        from_secret: my-docker-token
+      DOCKER_REGISTRY: https://ghcr.io
+      DOCKER_USERNAME: LeKovr
+      PLUGIN_TAGS: devel
+      PLUGIN_REPO: https://ghcr.io/dopos/dcape
