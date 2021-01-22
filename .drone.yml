@@ -11,3 +11,4 @@ steps:
       DOCKER_USERNAME: LeKovr
       PLUGIN_TAGS: 0.23,latest
       PLUGIN_REPO: ghcr.io/dopos/narra
+      PLUGIN_CUSTOM_LABELS: org.opencontainers.image.source=${DRONE_REPO_LINK}
