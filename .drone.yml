@@ -9,5 +9,5 @@ steps:
         from_secret: my-docker-token
       DOCKER_REGISTRY: https://ghcr.io
       DOCKER_USERNAME: LeKovr
-      PLUGIN_TAGS: devel
-      PLUGIN_REPO: ghcr.io/dopos/dcape
+      PLUGIN_TAGS: 0.23,latest
+      PLUGIN_REPO: ghcr.io/dopos/narra
