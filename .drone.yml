@@ -8,7 +8,10 @@ steps:
       DOCKER_PASSWORD:
         from_secret: my-docker-token
       DOCKER_REGISTRY: https://ghcr.io
-      DOCKER_USERNAME: LeKovr
-      PLUGIN_TAGS: 0.23,latest
-      PLUGIN_REPO: ghcr.io/dopos/narra
+      DOCKER_USERNAME: ${DRONE_REPO_OWNER}
+      PLUGIN_TAGS: ${DRONE_SEMVER},latest
+      PLUGIN_REPO: ghcr.io/${DRONE_REPO}
       PLUGIN_CUSTOM_LABELS: org.opencontainers.image.source=${DRONE_REPO_LINK}
+    when:
+      event:
+      - tag

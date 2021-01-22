@@ -20,7 +20,10 @@ Usage example available inside [dcape](https://github.com/dopos/dcape) project (
 
 ## Install
 
-narra is available as docker image at [dockerhub](https://store.docker.com/community/images/dopos/narra)
+narra is available as docker image at
+
+* [DockerHub](https://store.docker.com/community/images/dopos/narra)
+* [GitHub container registry](https://github.com/orgs/dopos/packages/container/package/narra)
 
 ## Use
 
