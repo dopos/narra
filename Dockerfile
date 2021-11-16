@@ -1,7 +1,7 @@
 # FROM golang:1.15.5-alpine3.12
 FROM ghcr.io/dopos/golang-alpine:v1.16.10-alpine3.14.3
 
-ENV NARRA_VERSION 0.24.2
+ENV NARRA_VERSION 0.23.2
 RUN apk add --no-cache git curl
 
 WORKDIR /opt/narra
