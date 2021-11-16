@@ -1,6 +1,6 @@
 module github.com/dopos/narra
 
-go 1.15
+go 1.16
 
 require (
 	github.com/birkirb/loggers-mapper-logrus v0.0.0-20180326232643-461f2d8e6f72
