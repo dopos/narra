@@ -69,6 +69,8 @@ var (
 	ErrAuthNotGranted = errors.New("Auth not granted")
 	// ErrStateUnknown holds error: Unknown state
 	ErrStateUnknown = errors.New("Unknown state")
+	// ErrBasicTokenExpected holds error when username <> token
+	ErrBasicTokenExpected = errors.New("Basuc Auth username is 'token'")
 )
 
 //Functional options
@@ -155,7 +157,19 @@ func New(cfg Config, log loggers.Contextual, options ...Option) *Service {
 func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request) bool {
 	// Use the custom HTTP client when requesting a token.
 	var ids *[]string
-	if auth := r.Header.Get(srv.Config.AuthHeader); auth != "" {
+	var auth string
+	if u, p, ok := r.BasicAuth(); ok {
+		srv.log.Debugf("Basic Auth requested for user %s", u)
+		if u != "token" {
+			srv.warn(w, ErrBasicTokenExpected, http.StatusUnauthorized)
+			return false
+		}
+		auth = p
+	} else {
+		auth = r.Header.Get(srv.Config.AuthHeader)
+	}
+
+	if auth != "" {
 		// server token
 		httpClient := &http.Client{Timeout: 2 * time.Second}
 		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
@@ -169,6 +183,7 @@ func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request) bool {
 			srv.warn(w, fmt.Errorf("Get meta by header (%v) error: %w", r.Header, err), http.StatusUnauthorized)
 			return false
 		}
+
 	} else {
 		// own cookie
 		cookie, err := r.Cookie(srv.Config.CookieName)
