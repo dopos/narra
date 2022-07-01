@@ -71,6 +71,8 @@ var (
 	ErrStateUnknown = errors.New("Unknown state")
 	// ErrBasicTokenExpected holds error when username <> token
 	ErrBasicTokenExpected = errors.New("Basuc Auth username is 'token'")
+	// ErrBasicAuthRequired holds 401 for docker client
+	ErrBasicAuthRequired = errors.New("Basuc Auth is required")
 )
 
 //Functional options
@@ -185,6 +187,18 @@ func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request) bool {
 		}
 
 	} else {
+		ua := r.Header.Get("User-Agent")
+		if strings.Contains(ua, "ocker") {
+			srv.log.Warnf("Docker UserAgent: %s", ua)
+			w.Header().Add("Docker-Distribution-Api-Version", "registry/2.0")
+			http.Error(w, ErrBasicAuthRequired.Error(), http.StatusUnauthorized)
+			return false
+
+			// TODO: Should we use it?
+			// w.Header().Add("Www-Authenticate", fmt.Sprintf("Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:samalba/my-app:pull,push"
+
+		}
+
 		// own cookie
 		cookie, err := r.Cookie(srv.Config.CookieName)
 		errMsg := "Cookie read error: %v"
@@ -243,9 +257,6 @@ func (srv *Service) Stage1Handler() http.Handler {
 		srv.log.Debugf("UUID: %s Original URL:%s", uuid.String(), url)
 		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
 		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
-
-		// TODO: Who can use it?
-		// w.Header().Add("Www-Authenticate", fmt.Sprintf("Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:samalba/my-app:pull,push"
 
 		srv.log.Debugf("Redir to %s", redirect)
 		w.Header().Add("Content-type", "application/json")
