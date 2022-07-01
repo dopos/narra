@@ -64,7 +64,7 @@ $(PRG): $(SOURCES)
 	$(GO) build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
 
 run: $(PRG)
-	./$(PRG) --as.my_url http://$(APP_SITE):8080 --fs.path ./test --fs.protect /private/ --as.do401  --debug
+	./$(PRG) --as.my_url http://$(APP_SITE):8080 --fs.path ./test --fs.protect /private/ --as.do401  --debug --as.cookie_name=narra_local
 
 ## Format go sources
 fmt:
