@@ -13,6 +13,12 @@ FROM scratch
 
 MAINTAINER Alexey Kovrizhkin <lekovr+dopos@gmail.com>
 
+LABEL org.opencontainers.image.title="narra"
+LABEL org.opencontainers.image.description="Nginx Auth_Request (and traefik forwardauth) via Remote Api"
+LABEL org.opencontainers.image.authors="Alexey Kovrizhkin <lekovr+dopos@gmail.com>"
+LABEL org.opencontainers.image.url="https://github.com/dopos/narra"
+LABEL org.opencontainers.image.licenses="MIT"
+
 WORKDIR /
 COPY --from=0 /opt/narra/narra .
 # Need for SSL
