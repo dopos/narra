@@ -191,6 +191,7 @@ func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request) bool {
 		if strings.Contains(ua, "ocker") {
 			srv.log.Warnf("Docker UserAgent: %s", ua)
 			w.Header().Add("Docker-Distribution-Api-Version", "registry/2.0")
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=%q", "narra"))
 			http.Error(w, ErrBasicAuthRequired.Error(), http.StatusUnauthorized)
 			return false
 
