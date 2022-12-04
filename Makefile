@@ -1,10 +1,16 @@
+## narra Makefile:
+## nginx auth_request via remote api
+#:
 SHELL          = /bin/sh
 GO            ?= go
 CFG           ?= .env
 PRG           ?= $(shell basename $$PWD)
 
+SOURCES        = $(shell find . -maxdepth 3 -mindepth 1 -path ./var -prune -o -name '*.go')
+
 VERSION       ?= $(shell git describe --tags --always)
-SOURCES       ?= *.go cmd/*/*.go
+# Last project tag
+RELEASE       ?= $(shell git describe --tags --abbrev=0 --always)
 
 APP_ROOT      ?= .
 APP_SITE      ?= $(PRG).dev.lan
@@ -19,8 +25,16 @@ AS_CLIENT_KEY ?= you_should_get_key_from_as
 AS_COOKIE_SIGN_KEY   ?= $(shell < /dev/urandom tr -dc A-Za-z0-9 | head -c32; echo)
 AS_COOKIE_CRYPT_KEY  ?= $(shell < /dev/urandom tr -dc A-Za-z0-9 | head -c32; echo)
 
+# docker-compose image
+DC_IMG        ?= dcape-compose
 # docker-compose version
-DC_VER        ?= 1.27.4
+DC_VER        ?= latest
+
+# Hardcoded in docker-compose.yml service name
+DC_SERVICE    ?= app
+
+# docker app for change inside containers
+DOCKER_BIN    ?= docker
 
 # Docker-compose project name (container name prefix)
 PROJECT_NAME  ?= $(PRG)
@@ -60,11 +74,21 @@ export
 
 all: help
 
+# ------------------------------------------------------------------------------
+## Compile operations
+#:
+
 $(PRG): $(SOURCES)
 	$(GO) build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
 
+## Build app
+build: $(PRG)
+
+## Build & run app
 run: $(PRG)
-	./$(PRG) --as.my_url http://$(APP_SITE):8080 --fs.path ./test --fs.protect /private/ --as.do401  --debug --as.cookie_name=narra_local
+	@echo Open http://$(APP_SITE):8080
+	./$(PRG) --as.my_url http://$(APP_SITE):8080 --fs.path ./test --fs.protect /private/ \
+	 --as.do401  --log.debug --as.cookie_name=narra_local
 
 ## Format go sources
 fmt:
@@ -82,6 +106,9 @@ lint:
 lint-more:
 	golangci-lint run ./...
 
+## Run tests
+test: coverage.out
+
 ## Run tests and fill coverage.out
 cov: coverage.out
 
@@ -97,6 +124,16 @@ cov-html: cov
 cov-clean:
 	rm -f coverage.*
 
+## Changes from last tag
+changelog:
+	@echo Changes since $(RELEASE)
+	@echo
+	@git log $(RELEASE)..@ --pretty=format:"* %s"
+
+
+# ------------------------------------------------------------------------------
+## Docker operations
+#:
 
 docker: $(PRG)
 	docker build -t $(PRG) .
@@ -129,18 +166,38 @@ dc: docker-compose.yml
 	  -v $$PWD:$$PWD \
 	  -w $$PWD \
 	  -e APP_ROOT \
-	  docker/compose:$(DC_VER) \
+	  $(DC_IMG):$(DC_VER) \
 	  -p $$PROJECT_NAME \
 	  $(CMD)
+
+## Build docker image
+docker-build: CMD="build --no-cache --force-rm $(DC_SERVICE)"
+docker-build: dc
+
+## Remove docker image & temp files
+docker-clean:
+	[ "$$($(DOCKER_BIN) images -q $(DC_IMAGE) 2> /dev/null)" = "" ] || $(DOCKER_BIN) rmi $(DC_IMAGE)
+
+
+# ------------------------------------------------------------------------------
+## Other
+#:
 
 $(CFG).sample:
 	@[ -f $@ ] || { echo "$$CONFIG" > $@ ; echo "Warning: Created default $@" ; }
 
+## Generate config sample
 conf: $(CFG).sample ## Create initial config
 	@true
 
 clean: ## Remove previous builds
 	@rm -f $(PRG)
 
-help: ## Display this help screen
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+# This code handles group header and target comment with one or two lines only
+## list Makefile targets
+## (this is default target)
+help:
+	@grep -A 1 -h "^## " $(MAKEFILE_LIST) \
+  | sed -E 's/^--$$// ; /./{H;$$!d} ; x ; s/^\n## ([^\n]+)\n(## (.+)\n)*(.+):(.*)$$/"    " "\4" "\1" "\3"/' \
+  | sed -E 's/^"    " "#" "(.+)" "(.*)"$$/"" "" "" ""\n"\1 \2" "" "" ""/' \
+  | xargs printf "%s\033[36m%-15s\033[0m %s %s\n"
