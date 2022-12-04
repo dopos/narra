@@ -1,10 +1,15 @@
-# FROM golang:1.15.5-alpine3.12
-FROM ghcr.io/dopos/golang-alpine:v1.16.10-alpine3.14.3
+# Docker image versions
+ARG go_ver=v1.18.6-alpine3.16.2
+
+# Docker images
+ARG go_img=ghcr.io/dopos/golang-alpine
+
+FROM ${go_img}:${go_ver}
 
 ENV NARRA_VERSION 0.24.1
 RUN apk add --no-cache git curl
 
-WORKDIR /opt/narra
+WORKDIR /build
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=`git describe --tags --always`" -a ./cmd/narra
@@ -21,7 +26,7 @@ LABEL \
   org.opencontainers.image.licenses="MIT"
 
 WORKDIR /
-COPY --from=0 /opt/narra/narra .
+COPY --from=0 /build/narra .
 # Need for SSL
 COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
