@@ -25,6 +25,14 @@ const (
 	AppDescription = "Nginx Auth Request via Remote Auth server"
 )
 
+var (
+	// App version, actual value will be set at build time
+	version = "0.0-dev"
+
+	// Repository address, actual value will be set at build time
+	repo = "repo.git"
+)
+
 // Config holds all config vars
 type Config struct {
 	Listen         string        `long:"listen" default:":8080" description:"Addr and port which server listens at"`
@@ -56,7 +64,7 @@ func Run(version string, exitFunc func(code int)) {
 
 	mux := http.NewServeMux()
 
-	auth := narra.New(cfg.AuthServer)
+	auth := narra.New(&cfg.AuthServer)
 	auth.SetupRoutes(mux, "/")
 	if cfg.Path != "" {
 		serverRoot := os.DirFS(cfg.Path)
@@ -77,8 +85,11 @@ func Run(version string, exitFunc func(code int)) {
 	ctx = logger.NewContext(ctx, log)
 
 	srv := &http.Server{
-		Addr:    cfg.Listen,
-		Handler: hh,
+		Addr:           cfg.Listen,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+		Handler:        hh,
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},

@@ -33,6 +33,9 @@ type Config struct {
 	ClientID  string `long:"client_id" env:"CLIENT_ID" description:"Authorization Server Client ID"`
 	ClientKey string `long:"client_key" env:"CLIENT_KEY" description:"Authorization Server Client key"`
 
+	CacheExpire  time.Duration `long:"cache_expire" default:"5" description:"Cache expire interval, min"`
+	CacheCleanup time.Duration `long:"cache_cleanup" default:"10" description:"Cache cleanup interval, min"`
+
 	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use token from this header if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
 	CookieName     string `long:"cookie_name" default:"narra_token" description:"Auth cookie name"`
@@ -60,7 +63,7 @@ type ProviderConfig struct {
 
 // Service holds service attributes
 type Service struct {
-	Config        Config
+	Config        *Config
 	api           *oauth2.Config
 	cookie        *securecookie.SecureCookie
 	cache         *cache.Cache
@@ -71,15 +74,15 @@ type Service struct {
 
 var (
 	// ErrNoTeam holds error: User is not in required team
-	ErrNoTeam = errors.New("User is not in required team")
+	ErrNoTeam = errors.New("user is not in required team")
 	// ErrAuthNotGranted holds error: Auth not granted
-	ErrAuthNotGranted = errors.New("Auth not granted")
+	ErrAuthNotGranted = errors.New("auth not granted")
 	// ErrStateUnknown holds error: Unknown state
-	ErrStateUnknown = errors.New("Unknown state")
+	ErrStateUnknown = errors.New("unknown state")
 	// ErrBasicTokenExpected holds error when username <> token
-	ErrBasicTokenExpected = errors.New("Basuc Auth username does not match")
+	ErrBasicTokenExpected = errors.New("basic Auth username does not match")
 	// ErrBasicAuthRequired holds 401 for docker client
-	ErrBasicAuthRequired = errors.New("Basuc Auth is required")
+	ErrBasicAuthRequired = errors.New("basic Auth is required")
 )
 
 // DL holds package debug level
@@ -92,9 +95,9 @@ var DL = 1
 type Option func(*Service)
 
 // Cache allows to change default cache lib
-func Cache(cache *cache.Cache) Option {
+func Cache(c *cache.Cache) Option {
 	return func(srv *Service) {
-		srv.cache = cache
+		srv.cache = c
 	}
 }
 
@@ -112,30 +115,28 @@ func Provider(prov *ProviderConfig) Option {
 	}
 }
 
-var (
-	// Providers holds supported Authorization Servers properties
-	Providers = map[string]*ProviderConfig{
-		"gitea": {
-			Auth:        "/login/oauth/authorize",
-			Token:       "/login/oauth/access_token",
-			User:        "/api/v1/user",
-			Team:        "/api/v1/user/orgs",
-			TokenPrefix: "token ",
-			TeamName:    "username",
-		},
-		"mmost": {
-			Auth:        "/oauth/authorize",
-			Token:       "/oauth/access_token",
-			User:        "/api/v4/users/me",
-			Team:        "/api/v4/users/%s/teams",
-			TokenPrefix: "Bearer ",
-			TeamName:    "name",
-		},
-	}
-)
+// Providers holds supported Authorization Servers properties
+var Providers = map[string]*ProviderConfig{
+	"gitea": {
+		Auth:        "/login/oauth/authorize",
+		Token:       "/login/oauth/access_token",
+		User:        "/api/v1/user",
+		Team:        "/api/v1/user/orgs",
+		TokenPrefix: "token ",
+		TeamName:    "username",
+	},
+	"mmost": {
+		Auth:        "/oauth/authorize",
+		Token:       "/oauth/access_token",
+		User:        "/api/v4/users/me",
+		Team:        "/api/v4/users/%s/teams",
+		TokenPrefix: "Bearer ",
+		TeamName:    "name",
+	},
+}
 
 // New creates service
-func New(cfg Config, options ...Option) *Service {
+func New(cfg *Config, options ...Option) *Service {
 	srv := &Service{
 		Config: cfg,
 	}
@@ -146,15 +147,13 @@ func New(cfg Config, options ...Option) *Service {
 		srv.cookie = securecookie.New([]byte(cfg.CookieSignKey), []byte(cfg.CookieCryptKey))
 	}
 	if srv.cache == nil {
-		srv.cache = cache.New(5*time.Minute, 10*time.Minute)
+		srv.cache = cache.New(cfg.CacheExpire*time.Minute, cfg.CacheCleanup*time.Minute)
 	}
 	if srv.provider == nil {
 		srv.provider = Providers[cfg.Type]
 	}
-	if strings.HasSuffix(srv.Config.Host, "/") {
-		// some users asked to autoremove
-		srv.Config.Host = strings.TrimSuffix(srv.Config.Host, "/")
-	}
+	// some users asked to autoremove
+	srv.Config.Host = strings.TrimSuffix(srv.Config.Host, "/")
 	srv.api = &oauth2.Config{
 		ClientID:     srv.Config.ClientID,
 		ClientSecret: srv.Config.ClientKey,
@@ -182,7 +181,7 @@ func (srv *Service) IsMyURLEmpty() bool {
 
 // SetMyURL changes app URL
 func (srv *Service) SetMyURL(scheme, host string) {
-	//Use mutex here
+	// Use mutex here
 	srv.lock.Lock()
 	srv.lockableMyURL = fmt.Sprintf("%s://%s", scheme, host)
 	srv.api.RedirectURL = srv.lockableMyURL + srv.Config.CallBackURL
@@ -226,11 +225,10 @@ func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request, replaceHead
 		var err error
 		ids, err = srv.getMeta(client)
 		if err != nil {
-			warn(w, log, fmt.Errorf("Get meta by header (%v) error: %w", r.Header, err), "", http.StatusUnauthorized)
+			warn(w, log, fmt.Errorf("get meta by header (%v) error: %w", r.Header, err), "", http.StatusUnauthorized)
 			return false
 		}
 		log.V(DL).Info("User meta", "tags", ids)
-
 	} else {
 		// No header => check others
 
@@ -269,12 +267,12 @@ func (srv *Service) AuthIsOK(w http.ResponseWriter, r *http.Request, replaceHead
 			return false
 		}
 	}
-	if len(srv.Config.Team) == 0 || stringExists(ids, srv.Config.Team) {
+	if srv.Config.Team == "" || stringExists(ids, srv.Config.Team) {
 		log.V(DL).Info("User authorized", "user", (*ids)[0])
 		r.Header.Add(srv.Config.UserHeader, (*ids)[0])
 		return true
 	}
-	warn(w, log, fmt.Errorf("User %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), "", http.StatusForbidden)
+	warn(w, log, fmt.Errorf("user %s Team %s: %w", (*ids)[0], srv.Config.Team, ErrNoTeam), "", http.StatusForbidden)
 	return false
 }
 
@@ -395,22 +393,22 @@ func (srv *Service) ProtectMiddleware(next http.Handler, re *regexp.Regexp) http
 
 // request processes requests to Auth service
 func (srv *Service) request(client *http.Client, url string, data interface{}) error {
-	req, err := http.NewRequest("GET", srv.Config.Host+url, nil)
+	req, err := http.NewRequest("GET", srv.Config.Host+url, http.NoBody)
 	if err != nil {
-		return fmt.Errorf("Request create error: %w", err)
+		return fmt.Errorf("request create error: %w", err)
 	}
 	req.Header.Add("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Request error: %w", err)
+		return fmt.Errorf("request error: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Not OK with request, status: %d", resp.StatusCode)
+		return fmt.Errorf("not OK with request, status: %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 	err = jsoniter.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return fmt.Errorf("Parse response error: %w", err)
+		return fmt.Errorf("parse response error: %w", err)
 	}
 	return nil
 }
@@ -421,11 +419,11 @@ func (srv *Service) getMeta(client *http.Client) (*[]string, error) {
 	var user map[string]interface{}
 	err := srv.request(client, srv.provider.User, &user)
 	if err != nil {
-		return nil, fmt.Errorf("Get user metadata: %w", err)
+		return nil, fmt.Errorf("get user metadata: %w", err)
 	}
 	tags := []string{user["username"].(string)}
 
-	if len(srv.Config.Team) == 0 {
+	if srv.Config.Team == "" {
 		// no team check
 		return &tags, nil
 	}
@@ -439,7 +437,7 @@ func (srv *Service) getMeta(client *http.Client) (*[]string, error) {
 	var orgs []map[string]interface{}
 	err = srv.request(client, url, &orgs)
 	if err != nil {
-		return nil, fmt.Errorf("Get team metadata: %w", err)
+		return nil, fmt.Errorf("get team metadata: %w", err)
 	}
 
 	for _, o := range orgs {
@@ -474,7 +472,7 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 
 	tok, err := srv.api.Exchange(ctx, code)
 	if err != nil {
-		err = fmt.Errorf("Token fetch failed: %w", err)
+		err = fmt.Errorf("token fetch failed: %w", err)
 		return
 	}
 
@@ -488,9 +486,9 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 }
 
 // stringExists checks if str exists in strings slice
-func stringExists(strings *[]string, str string) bool {
-	if len(*strings) > 0 {
-		for _, s := range *strings {
+func stringExists(strs *[]string, str string) bool {
+	if len(*strs) > 0 {
+		for _, s := range *strs {
 			if str == s {
 				return true
 			}
