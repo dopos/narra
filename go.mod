@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/LeKovr/go-kit/config v0.2.0
 	github.com/LeKovr/go-kit/logger v0.2.1
-	github.com/go-logr/logr v1.2.3
+	github.com/go-logr/logr v1.2.4
 	github.com/google/uuid v1.3.0
 	github.com/json-iterator/go v1.1.12
 	github.com/patrickmn/go-cache v2.1.0+incompatible
