@@ -33,8 +33,8 @@ type Config struct {
 	ClientID  string `long:"client_id" env:"CLIENT_ID" description:"Authorization Server Client ID"`
 	ClientKey string `long:"client_key" env:"CLIENT_KEY" description:"Authorization Server Client key"`
 
-	CacheExpire  time.Duration `long:"cache_expire" default:"5" description:"Cache expire interval, min"`
-	CacheCleanup time.Duration `long:"cache_cleanup" default:"10" description:"Cache cleanup interval, min"`
+	CacheExpire  time.Duration `long:"cache_expire" default:"5m" description:"Cache expire interval"`
+	CacheCleanup time.Duration `long:"cache_cleanup" default:"10m" description:"Cache cleanup interval"`
 
 	AuthHeader     string `long:"auth_header" default:"X-narra-token" description:"Use token from this header if given"`
 	CookieDomain   string `long:"cookie_domain"  description:"Auth cookie domain"`
@@ -147,7 +147,7 @@ func New(cfg *Config, options ...Option) *Service {
 		srv.cookie = securecookie.New([]byte(cfg.CookieSignKey), []byte(cfg.CookieCryptKey))
 	}
 	if srv.cache == nil {
-		srv.cache = cache.New(cfg.CacheExpire*time.Minute, cfg.CacheCleanup*time.Minute)
+		srv.cache = cache.New(cfg.CacheExpire, cfg.CacheCleanup)
 	}
 	if srv.provider == nil {
 		srv.provider = Providers[cfg.Type]
