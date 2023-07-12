@@ -1,35 +1,35 @@
-# Docker image versions
-ARG go_ver=v1.18.6-alpine3.16.2
+ARG GOLANG_IMAGE=ghcr.io/dopos/golang-alpine
+ARG GOLANG_VERSION=v1.19.7-alpine3.17.2
+ARG APP=narra
 
-# Docker images
-ARG go_img=ghcr.io/dopos/golang-alpine
+FROM --platform=$BUILDPLATFORM ${GOLANG_IMAGE}:${GOLANG_VERSION} as build
 
-FROM ${go_img}:${go_ver}
+ARG APP
 
-ENV NARRA_VERSION 0.24.1
-RUN apk add --no-cache git curl
+COPY . /src/$APP
+WORKDIR /src/$APP
 
-WORKDIR /build
-COPY . .
-
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=`git describe --tags --always` -X main.repo=`git config --get remote.origin.url`" -a ./cmd/narra
+ARG GOPROXY TARGETOS TARGETARCH
+RUN --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
+    --mount=type=cache,id=gomod,target=/go/pkg \
+    make build-standalone
 
 FROM scratch
 
-MAINTAINER Alexey Kovrizhkin <lekovr+dopos@gmail.com>
-
 LABEL \
   org.opencontainers.image.title="narra" \
-  org.opencontainers.image.description="Nginx Auth_Request (and traefik forwardauth) via Remote Api" \
-  org.opencontainers.image.authors="Alexey Kovrizhkin <lekovr+dopos@gmail.com>" \
-  org.opencontainers.image.url="https://github.com/dopos/narra" \
+  org.opencontainers.image.description="Nginx Auth_Request (and traefik forwardauth) via Remote API" \
+  org.opencontainers.image.authors="lekovr+dopos@gmail.com" \
   org.opencontainers.image.licenses="MIT"
 
 WORKDIR /
-COPY --from=0 /build/narra .
+
+ARG APP
+
+COPY --from=build /src/$APP/$APP /app
+
 # Need for SSL
 COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 EXPOSE 8080
-ENTRYPOINT ["/narra"]
-
+ENTRYPOINT [ "/app" ]

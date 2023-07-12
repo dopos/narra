@@ -3,12 +3,10 @@ version: '2.1'
 services:
 
   nginx-test:
-    image: nginx:1.13-alpine
+    image: nginx:1.19.4-alpine
     restart: always
     depends_on:
       - app
-    networks:
-      - lan
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.narra-web.rule=Host(`${APP_SITE}`)"
@@ -21,8 +19,6 @@ services:
   app:
     image: narra
     restart: always
-    networks:
-      - lan
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.narra-dev.rule=Host(`${APP_SITE}`) && Path(`/login`,`/auth`,`/401/`)"
@@ -46,8 +42,6 @@ services:
       - AS_COOKIE_CRYPT_KEY
     build:
       context: .
-
-networks:
-  lan:
-    external:
-      name: ${DCAPE_NET}
+      args:
+        - GOLANG_VERSION
+        - GOPROXY

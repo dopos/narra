@@ -1,18 +1,55 @@
 ## narra Makefile:
 ## nginx auth_request via remote api
 #:
+
 SHELL          = /bin/sh
-GO            ?= go
 CFG           ?= .env
 PRG           ?= $(shell basename $$PWD)
+PRG_DEST      ?= $(PRG)
+# -----------------------------------------------------------------------------
+# Build config
+
+GO            ?= go
+GOLANG_VERSION = v1.19.7-alpine3.17.2
 
 SOURCES        = $(shell find . -maxdepth 3 -mindepth 1 -path ./var -prune -o -name '*.go')
-
-VERSION       ?= $(shell git describe --tags --always)
-# Last project tag
+APP_VERSION   ?= $(shell git describe --tags --always)
+# Last project tag (used in `make changelog`)
 RELEASE       ?= $(shell git describe --tags --abbrev=0 --always)
-# Repository address
+# Repository address (compiled into main.repo)
 REPO          ?= $(shell git config --get remote.origin.url)
+
+TARGETOS      ?= linux
+TARGETARCH    ?= amd64
+LDFLAGS       := -s -w -extldflags '-static'
+
+OS            ?= linux
+ARCH          ?= amd64
+ALLARCH       ?= "linux/amd64 linux/386 darwin/amd64 linux/arm linux/arm64"
+DIRDIST       ?= dist
+
+# Path to golang package docs
+GODOC_REPO    ?= github.com/dopos/$(PRG)
+# App docker image
+DOCKER_IMAGE  ?= ghcr.io/dopos/$(PRG)
+
+# -----------------------------------------------------------------------------
+# Docker image config
+
+# Hardcoded in docker-compose.yml service name
+DC_SERVICE    ?= app
+
+# Docker-compose project name (container name prefix)
+PROJECT_NAME  ?= $(PRG)
+
+# dcape network connect to, must be set in .env
+#DCAPE_NET     ?= dcape_default
+
+# docker app for change inside containers
+DOCKER_BIN    ?= docker
+
+# -----------------------------------------------------------------------------
+# App config
 
 APP_ROOT      ?= .
 APP_SITE      ?= $(PRG).dev.lan
@@ -27,22 +64,7 @@ AS_CLIENT_KEY ?= you_should_get_key_from_as
 AS_COOKIE_SIGN_KEY   ?= $(shell < /dev/urandom tr -dc A-Za-z0-9 | head -c32; echo)
 AS_COOKIE_CRYPT_KEY  ?= $(shell < /dev/urandom tr -dc A-Za-z0-9 | head -c32; echo)
 
-# docker-compose image
-DC_IMG        ?= dcape-compose
-# docker-compose version
-DC_VER        ?= latest
-
-# Hardcoded in docker-compose.yml service name
-DC_SERVICE    ?= app
-
-# docker app for change inside containers
-DOCKER_BIN    ?= docker
-
-# Docker-compose project name (container name prefix)
-PROJECT_NAME  ?= $(PRG)
-
-# dcape network connect to, must be set in .env
-DCAPE_NET     ?= dcape_default
+# -----------------------------------------------------------------------------
 
 define CONFIG
 # ------------------------------------------------------------------------------
@@ -64,7 +86,7 @@ AS_COOKIE_CRYPT_KEY=$(AS_COOKIE_CRYPT_KEY)
 # Docker-compose project name (container name prefix)
 PROJECT_NAME=$(PROJECT_NAME)
 # dcape network attach to
-DCAPE_NET=$(DCAPE_NET)
+#DCAPE_NET=$(DCAPE_NET)
 
 endef
 export CONFIG
@@ -80,11 +102,19 @@ all: help
 ## Compile operations
 #:
 
-$(PRG): $(SOURCES)
-	$(GO) build -ldflags "-X main.version=$(VERSION) -X main.repo=$(REPO)" ./cmd/$(PRG)
-
 ## Build app
 build: $(PRG)
+
+$(PRG): $(SOURCES)
+	GOOS=$(OS) GOARCH=$(ARCH) $(GO) build -v -o $@ -ldflags \
+	  "-X main.version=$(APP_VERSION) -X main.repo=$(REPO)" ./cmd/$@
+
+## Build like docker image from scratch
+build-standalone: test
+	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+	  $(GO) build -a -o $(PRG_DEST) \
+	  -ldflags "${LDFLAGS}-X main.version=$(APP_VERSION) -X main.repo=$(REPO)" \
+	  ./cmd/$(PRG)
 
 ## Build & run app
 run: $(PRG)
@@ -96,31 +126,38 @@ run: $(PRG)
 fmt:
 	$(GO) fmt ./...
 
+## Run lint
+lint:
+	@which golint > /dev/null || go install golang.org/x/lint/golint@latest
+	@golint ./...
+
+## Run golangci-lint
+ci-lint:
+	@golangci-lint run ./...
+
 ## Run vet
 vet:
-	$(GO) vet ./...
-
-## Run linter
-lint:
-	golint ./...
-
-## Run more linters
-lint-more:
-	golangci-lint run ./...
+	@$(GO) vet ./...
 
 ## Run tests
-test: coverage.out
-
-## Run tests and fill coverage.out
-cov: coverage.out
+test: lint vet coverage.out
 
 # internal target
 coverage.out: $(SOURCES)
-	GIN_MODE=release $(GO) test -test.v -test.race -coverprofile=$@ -covermode=atomic ./...
+	#GIN_MODE=release $(GO) test -test.v -test.race -coverprofile=$@ -covermode=atomic ./...
+	GIN_MODE=release $(GO) test -tags test -race -covermode=atomic -coverprofile=$@ ./...
 
 ## Open coverage report in browser
 cov-html: cov
 	$(GO) tool cover -html=coverage.out
+
+## Show code coverage per func
+cov-func: coverage.out
+	$(GO) tool cover -func coverage.out
+
+## Show total code coverage
+cov-total: coverage.out
+	@$(GO) tool cover -func coverage.out | grep total: | awk '{print $$3}'
 
 ## Clean coverage report
 cov-clean:
@@ -132,13 +169,17 @@ changelog:
 	@echo
 	@git log $(RELEASE)..@ --pretty=format:"* %s"
 
-
 # ------------------------------------------------------------------------------
 ## Docker operations
 #:
 
 docker: $(PRG)
 	docker build -t $(PRG) .
+
+ALLARCH_DOCKER ?= "linux/arm/v7,linux/arm64"
+
+docker-multi:
+	time docker buildx build --platform $(ALLARCH_DOCKER) -t $(DOCKER_IMAGE):$(APP_VERSION) --push .
 
 # ------------------------------------------------------------------------------
 
@@ -157,23 +198,11 @@ down:
 down: CMD=rm -f -s
 down: dc
 
-# ------------------------------------------------------------------------------
-
-# $$PWD используется для того, чтобы текущий каталог был доступен в контейнере по тому же пути
-# и относительные тома новых контейнеров могли его использовать
-## run docker-compose
-dc: docker-compose.yml
-	@docker run --rm  \
-	  -v /var/run/docker.sock:/var/run/docker.sock \
-	  -v $$PWD:$$PWD \
-	  -w $$PWD \
-	  -e APP_ROOT \
-	  $(DC_IMG):$(DC_VER) \
-	  -p $$PROJECT_NAME \
-	  $(CMD)
+dc:
+	docker compose -p $$PROJECT_NAME $(CMD)
 
 ## Build docker image
-docker-build: CMD="build --no-cache --force-rm $(DC_SERVICE)"
+docker-build: CMD=build --no-cache $(DC_SERVICE)
 docker-build: dc
 
 ## Remove docker image & temp files
