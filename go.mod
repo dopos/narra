@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/LeKovr/go-kit/config v0.2.1
 	github.com/LeKovr/go-kit/logger v0.2.2
+	github.com/LeKovr/go-kit/ver v0.1.0
 	github.com/go-logr/logr v1.2.4
 	github.com/google/uuid v1.3.0
 	github.com/json-iterator/go v1.1.12
@@ -25,6 +26,7 @@ require (
 	github.com/rs/zerolog v1.29.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/sys v0.10.0 // indirect
+	golang.org/x/tools v0.11.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )

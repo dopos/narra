@@ -12,6 +12,7 @@ import (
 
 	"github.com/LeKovr/go-kit/config"
 	"github.com/LeKovr/go-kit/logger"
+	"github.com/LeKovr/go-kit/ver"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dopos/narra"
@@ -51,6 +52,7 @@ func Run(version string, exitFunc func(code int)) {
 	// Setup logger
 	log := logger.New(cfg.Logger, nil)
 	log.Info(AppName, "version", version)
+	go ver.Check(log, repo, version)
 
 	mux := http.NewServeMux()
 

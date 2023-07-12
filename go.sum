@@ -2,6 +2,8 @@ github.com/LeKovr/go-kit/config v0.2.1 h1:19r3yJj1fEXAL6MH8A6IADjjEFadS0iHEHLxGR
 github.com/LeKovr/go-kit/config v0.2.1/go.mod h1:Yl1aabOlS0D6WoDMczi92cOSRoK4wjqPArX4EfM1dls=
 github.com/LeKovr/go-kit/logger v0.2.2 h1:szEwEgiF7Cy80edivWRzczu4OZiSrR1W+6FDB3A9mBQ=
 github.com/LeKovr/go-kit/logger v0.2.2/go.mod h1:DTXecdX9cuDXi0nEVr5FzQErg2SJzaA8tSUCULltvGA=
+github.com/LeKovr/go-kit/ver v0.1.0 h1:a1N3HSbVhebFYc47ARQBnoLBURkjwK1U1Uc2QcBrT5E=
+github.com/LeKovr/go-kit/ver v0.1.0/go.mod h1:uflG2wh94YiE4hbrqMNA5UvnLCY90e/KeYLgWN260Pg=
 github.com/coreos/go-systemd/v22 v22.3.3-0.20220203105225-a9a7ef127534/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
@@ -60,6 +62,8 @@ golang.org/x/sys v0.10.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.11.0 h1:EMCa6U9S2LtZXLAMoWiR/R8dAQFRqbAitmbJ2UKhoi8=
+golang.org/x/tools v0.11.0/go.mod h1:anzJrxPjNtfgiYQYirP2CPGzGLxrH2u2QBhn6Bf3qY8=
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 google.golang.org/appengine v1.6.7 h1:FZR1q0exgwxzPzp/aF+VccGrSfxfPpkBqjIIEq3ru6c=
 google.golang.org/appengine v1.6.7/go.mod h1:8WjMMxjGQR8xUklV/ARdw2HLXBOI7O7uCIDZVag1xfc=

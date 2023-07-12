@@ -12,7 +12,7 @@ RUN apk add --no-cache git curl
 WORKDIR /build
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=`git describe --tags --always`" -a ./cmd/narra
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=`git describe --tags --always` -X main.repo=`git config --get remote.origin.url`" -a ./cmd/narra
 
 FROM scratch
 

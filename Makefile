@@ -11,6 +11,8 @@ SOURCES        = $(shell find . -maxdepth 3 -mindepth 1 -path ./var -prune -o -n
 VERSION       ?= $(shell git describe --tags --always)
 # Last project tag
 RELEASE       ?= $(shell git describe --tags --abbrev=0 --always)
+# Repository address
+REPO          ?= $(shell git config --get remote.origin.url)
 
 APP_ROOT      ?= .
 APP_SITE      ?= $(PRG).dev.lan
@@ -79,7 +81,7 @@ all: help
 #:
 
 $(PRG): $(SOURCES)
-	$(GO) build -ldflags "-X main.version=$(VERSION)" ./cmd/$(PRG)
+	$(GO) build -ldflags "-X main.version=$(VERSION) -X main.repo=$(REPO)" ./cmd/$(PRG)
 
 ## Build app
 build: $(PRG)

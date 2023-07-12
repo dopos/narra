@@ -7,8 +7,13 @@ package main
 
 import "os"
 
-// Actual main.version value will be set at build time
-var version = "0.0-dev"
+var (
+	// App version, actual value will be set at build time
+	version = "0.0-dev"
+
+	// Repository address, actual value will be set at build time
+	repo = "repo.git"
+)
 
 func main() {
 	Run(version, os.Exit)
