@@ -7,7 +7,7 @@ require (
 	github.com/LeKovr/go-kit/logger v0.2.2
 	github.com/LeKovr/go-kit/ver v0.1.0
 	github.com/go-logr/logr v1.2.4
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/json-iterator/go v1.1.12
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	golang.org/x/oauth2 v0.11.0
