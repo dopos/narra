@@ -13,7 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/patrickmn/go-cache"
+	cache "zgo.at/zcache/v2"
 	"golang.org/x/oauth2"
 	"gopkg.in/gorilla/securecookie.v1"
 )
@@ -66,7 +66,7 @@ type Service struct {
 	Config        *Config
 	api           *oauth2.Config
 	cookie        *securecookie.SecureCookie
-	cache         *cache.Cache
+	cache         *cache.Cache[string, string]
 	provider      *ProviderConfig
 	lock          sync.Mutex
 	lockableMyURL string
@@ -95,7 +95,7 @@ var DL = 1
 type Option func(*Service)
 
 // Cache allows to change default cache lib
-func Cache(c *cache.Cache) Option {
+func Cache(c *cache.Cache[string, string]) Option {
 	return func(srv *Service) {
 		srv.cache = c
 	}
@@ -147,7 +147,7 @@ func New(cfg *Config, options ...Option) *Service {
 		srv.cookie = securecookie.New([]byte(cfg.CookieSignKey), []byte(cfg.CookieCryptKey))
 	}
 	if srv.cache == nil {
-		srv.cache = cache.New(cfg.CacheExpire, cfg.CacheCleanup)
+		srv.cache = cache.New[string, string](cfg.CacheExpire, cfg.CacheCleanup)
 	}
 	if srv.provider == nil {
 		srv.provider = Providers[cfg.Type]
@@ -304,7 +304,7 @@ func (srv *Service) Stage1Handler() http.Handler {
 			r.Header.Get("X-Forwarded-Uri"),
 		)
 		log.V(DL).Info("Got UUID", "uuid", uuid.String(), "url", url)
-		srv.cache.Set(uuid.String(), url, cache.DefaultExpiration)
+		srv.cache.Set(uuid.String(), url)
 		redirect := srv.api.AuthCodeURL(uuid.String(), oauth2.AccessTypeOffline)
 
 		log.V(DL).Info("Redirect", "url", redirect)
@@ -458,13 +458,12 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 		err = ErrAuthNotGranted
 		return
 	}
-	urlIface, found := srv.cache.Get(state)
+	url, found := srv.cache.Get(state)
 	if !found {
 		err = ErrStateUnknown
 		return
 	}
 	srv.cache.Delete(state)
-	url = urlIface.(string)
 
 	// Use the custom HTTP client when requesting a token.
 	httpClient := &http.Client{Timeout: 2 * time.Second}
