@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.26.2] - 2023-12-20
+
+### Update deps
+
+* upd: build app for go 1.21
+* add: build docker for arm64v8
+* Bump github.com/google/uuid from 1.4.0 to 1.5.0
+* Bump golang.org/x/oauth2 from 0.13.0 to 0.15.0
+
 ## [0.26.1] - 2023-11-13
 
 ### Update deps
