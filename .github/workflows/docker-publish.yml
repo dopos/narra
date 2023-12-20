@@ -55,7 +55,7 @@ jobs:
           context: .
           # we do not use github hardware for multiarch builds
           # we use "make docker-multi" instead
-          platforms: linux/amd64
+          platforms: linux/amd64 linux/arm64v8
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
