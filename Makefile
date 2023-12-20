@@ -144,8 +144,7 @@ test: lint vet coverage.out
 
 # internal target
 coverage.out: $(SOURCES)
-	#GIN_MODE=release $(GO) test -test.v -test.race -coverprofile=$@ -covermode=atomic ./...
-	GIN_MODE=release $(GO) test -tags test -race -covermode=atomic -coverprofile=$@ ./...
+	CGO_ENABLED=1 GIN_MODE=release $(GO) test -tags test -race -covermode=atomic -coverprofile=$@ ./...
 
 ## Open coverage report in browser
 cov-html: cov
