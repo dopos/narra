@@ -1,6 +1,6 @@
 module github.com/dopos/narra
 
-go 1.19
+go 1.21
 
 require (
 	github.com/LeKovr/go-kit/config v0.2.1
