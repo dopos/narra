@@ -3,7 +3,7 @@ module github.com/dopos/narra
 go 1.21
 
 require (
-	github.com/LeKovr/go-kit/config v0.2.1
+	github.com/LeKovr/go-kit/config v0.2.2
 	github.com/LeKovr/go-kit/logger v0.2.2
 	github.com/LeKovr/go-kit/ver v0.1.0
 	github.com/go-logr/logr v1.3.0
