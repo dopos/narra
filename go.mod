@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/LeKovr/go-kit/config v0.2.1
 	github.com/LeKovr/go-kit/logger v0.2.2
-	github.com/LeKovr/go-kit/ver v0.1.0
+	github.com/LeKovr/go-kit/ver v0.10.0
 	github.com/go-logr/logr v1.3.0
 	github.com/google/uuid v1.5.0
 	github.com/json-iterator/go v1.1.12
@@ -16,9 +16,11 @@ require (
 )
 
 require (
+	github.com/LeKovr/go-kit/slogger v0.12.24 // indirect
 	github.com/go-logr/zerologr v1.2.3 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/jessevdk/go-flags v1.5.0 // indirect
+	github.com/lmittmann/tint v1.0.3 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
