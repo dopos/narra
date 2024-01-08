@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.5.0
 	github.com/json-iterator/go v1.1.12
 	golang.org/x/oauth2 v0.15.0
-	golang.org/x/sync v0.5.0
+	golang.org/x/sync v0.6.0
 	gopkg.in/gorilla/securecookie.v1 v1.1.1
 	zgo.at/zcache/v2 v2.1.0
 )
