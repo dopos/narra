@@ -60,7 +60,7 @@ func Run(version string, exitFunc func(code int)) {
 	// Setup logger
 	log := logger.New(cfg.Logger, nil)
 	log.Info(AppName, "version", version)
-	go ver.Check(log, repo, version)
+	go ver.Check(repo, version)
 
 	mux := http.NewServeMux()
 
