@@ -2,7 +2,7 @@
 
 nginx auth_request via remote api
 
-Project status: MVP
+Project status: Production use since [2017](https://github.com/dopos/dcape/commit/394c24830e38b2c88098efc772939883b1a13b0f).
 
 This program intended to be used for client authentication with
 
@@ -12,20 +12,18 @@ This program intended to be used for client authentication with
 OAuth2 services supported:
 
 * [gitea](https://gitea.io)
-* [mattermost](https://mattermost.com/)
 
-Also, narra accepts auth via header with Gitea Access Tokens for non-interactive use cases.
+Also, narra accepts auth via header with Gitea Access Tokens for non-interactive use cases, see [dcape-config-cli](https://github.com/dopos/dcape-config-cli).
 
-Usage example available inside [dcape](https://github.com/dopos/dcape) project (see apps/cis there).
+Usage example available inside [dcape](https://github.com/dopos/dcape) project.
 
 ## Install
 
 narra is available as docker image at
 
-* [DockerHub](https://store.docker.com/community/images/dopos/narra)
 * [GitHub container registry](https://github.com/orgs/dopos/packages/container/package/narra)
 
-## Use
+## Problems known
 
 Chain of requests with warning `Cookie decode error: securecookie: the value is not valid` in logfile means you have the same cookie for upper domain.
 This is configuration problem and you should rename one of these cookies (see `--as.cookie_name`).
@@ -46,7 +44,7 @@ This is configuration problem and you should rename one of these cookies (see `-
 
 ## History
 
-Primary goal is to allow logins via [gitea](https://gitea.io) API, starting from v0.10 we support OAuth2 services like [gitea](https://gitea.io) or [mattermost](https://mattermost.com/).
+Primary goal was to allow logins via [gitea](https://gitea.io) API. Starting from v0.10 narra uses OAuth2 services like [gitea](https://gitea.io) or [mattermost](https://mattermost.com/).
 
 Since v0.20 narra can act as Traefik2 ForwardAuth service.
 
@@ -54,4 +52,4 @@ Since v0.20 narra can act as Traefik2 ForwardAuth service.
 
 The MIT License (MIT), see [LICENSE](LICENSE).
 
-Copyright (c) 2017-2020 Aleksei Kovrizhkin <lekovr+dopos@gmail.com>
+Copyright (c) 2017-2024 Aleksei Kovrizhkin <lekovr+dopos@gmail.com>
