@@ -9,7 +9,7 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
-	golang.org/x/oauth2 v0.21.0
+	golang.org/x/oauth2 v0.22.0
 	golang.org/x/sync v0.7.0
 	gopkg.in/gorilla/securecookie.v1 v1.1.1
 	zgo.at/zcache/v2 v2.1.0
