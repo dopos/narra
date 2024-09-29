@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.26.4] - 2024-09-29
+
+* update docs
+* bump dependensies
+    * github.com/LeKovr/go-kit/config v0.2.1 to v0.2.2
+    * github.com/LeKovr/go-kit/logger v0.2.2 to v0.2.3
+    * github.com/LeKovr/go-kit/ver v0.1.0 to v0.10.0
+    * github.com/go-logr/logr v1.3.0 to v1.4.2
+    * github.com/google/uuid v1.5.0 to v1.6.0
+    * golang.org/x/oauth2 v0.15.0 to v0.23.0
+    * golang.org/x/sync v0.5.0 to v0.8.0
+
 ## [0.26.3] - 2023-12-20
 
 ### Update deps
