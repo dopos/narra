@@ -451,17 +451,15 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 	log := logr.FromContextOrDiscard(r.Context())
 	code := r.FormValue("code")
 	state := r.FormValue("state")
-	// TODO: r.FormValue("error")
+	// ?? r.FormValue("error")
 	// error=invalid_request&error_description
 	log.V(DL).Info("Auth data", "code", code, "state", state)
 	if code == "" || state == "" {
-		err = ErrAuthNotGranted
-		return
+		return "", nil, ErrAuthNotGranted
 	}
 	url, found := srv.cache.Get(state)
 	if !found {
-		err = ErrStateUnknown
-		return
+		return "", nil, ErrStateUnknown
 	}
 	srv.cache.Delete(state)
 
@@ -471,8 +469,7 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 
 	tok, err := srv.api.Exchange(ctx, code)
 	if err != nil {
-		err = fmt.Errorf("token fetch failed: %w", err)
-		return
+		return "", nil, fmt.Errorf("token fetch failed: %w", err)
 	}
 
 	log.V(DL+1).Info("API token", "token", tok)
@@ -481,7 +478,7 @@ func (srv *Service) processMeta(r *http.Request) (url string, ids *[]string, err
 	// load usernames from provider
 	ids, err = srv.getMeta(client)
 	log.V(DL).Info("User meta", "tags", ids)
-	return
+	return url, ids, err
 }
 
 // stringExists checks if str exists in strings slice
