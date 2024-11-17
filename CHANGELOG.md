@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.26.6] - 2024-11-18
+
+* update build for golang 1.22.3
+
 ## [0.26.5] - 2024-11-17
 
 * update gitflow
