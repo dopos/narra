@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.26.5] - 2024-11-17
+
+* update gitflow
+* bump dependensies
+    * golang.org/x/oauth2 from 0.23.0 to 0.24.0
+    * golang.org/x/sync from 0.8.0 to 0.9.0
+    * docker/login-action from 2 to 3
+    * docker/setup-qemu-action from 2 to 3
+    * docker/metadata-action from 4 to 5
+    * actions/checkout from 3 to 4
+    * actions/setup-go from 3 to 5
+
 ## [0.26.4] - 2024-09-29
 
 * update docs
