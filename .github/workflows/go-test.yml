@@ -25,7 +25,7 @@ jobs:
         env:
           CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
         with:
-          coverageCommand: go test -tags test -race -covermode=atomic -coverprofile=c.out . ./cmd/... ./storage/...
-          prefix: "github.com/LeKovr/showonce"
+          coverageCommand: go test -tags test -race -covermode=atomic -coverprofile=c.out ./...
+          prefix: "github.com/dopos/narra"
           debug: true
 
