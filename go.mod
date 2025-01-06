@@ -5,7 +5,7 @@ go 1.22.3
 toolchain go1.23.2
 
 require (
-	github.com/LeKovr/go-kit/config v0.2.2
+	github.com/LeKovr/go-kit/config v0.3.0
 	github.com/LeKovr/go-kit/logger v0.2.3
 	github.com/LeKovr/go-kit/ver v0.10.0
 	github.com/go-logr/logr v1.4.2
