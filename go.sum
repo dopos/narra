@@ -1,5 +1,5 @@
-github.com/LeKovr/go-kit/config v0.3.0 h1:EXkmWHTpb3C21Jy7w+ojVbF27bBcQqAvKCqBTZ7kdRg=
-github.com/LeKovr/go-kit/config v0.3.0/go.mod h1:/pwowGPoobH1dIf1j42II1DsVPaYWBBfLR2UZ4NnFDM=
+github.com/LeKovr/go-kit/config v0.5.1 h1:2bKdr8xQ0iDoguWSnCZPakbm2YQi1d9PnPRcuEUUHdw=
+github.com/LeKovr/go-kit/config v0.5.1/go.mod h1:/pwowGPoobH1dIf1j42II1DsVPaYWBBfLR2UZ4NnFDM=
 github.com/LeKovr/go-kit/logger v0.2.3 h1:WrgtGginyjHki1cTeYOHI/+Cn9PGRjrQWZyHXe+l6LU=
 github.com/LeKovr/go-kit/logger v0.2.3/go.mod h1:gXhTOEQCJQSnOB301OiCKrdbgILm7h+49OgBitidACM=
 github.com/LeKovr/go-kit/slogger v0.12.25 h1:6DT0bjCMHlaSlnkLChR2Biw+52HqnE3lOpGZBcctuEo=
