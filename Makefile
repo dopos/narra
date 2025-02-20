@@ -171,8 +171,7 @@ cloc:
 clog:
 	@echo Changes since $(RELEASE)
 	@echo
-	@git log $(RELEASE)..@ --pretty=format:"* %s"
-
+	@git log $(RELEASE)..@ --pretty=format:"* %s" | sort
 
 # ------------------------------------------------------------------------------
 ## Docker operations
