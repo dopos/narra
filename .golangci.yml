@@ -1,103 +1,99 @@
-# https://github.com/xelaj/mtproto/blob/main/.golangci.yml
-
 run:
-  issues-exit-code: 1
-  timeout: 5m
+  timeout: 2m
 
 linters-settings:
-  depguard:
-    list-type: blacklist
-    packages:
-      - github.com/sirupsen/logrus
-      - log
-  dupl:
-    threshold: 100
-  funlen:
-    lines: 100
-    statements: 50
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+  gocyclo:
+    min-complexity: 16
   goconst:
     min-len: 3
-    min-occurrences: 2
+    min-occurrences: 3
+  misspell:
+    locale: US
+  funlen:
+    lines: -1
+    statements: 40
+  gofumpt:
+    extra-rules: true
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "github.com/instana/testify"
+            desc: not allowed
+          - pkg: "github.com/pkg/errors"
+            desc: Should be replaced by standard lib errors package
+  godox:
+    keywords:
+      - FIXME
   gocritic:
     enabled-tags:
       - diagnostic
-      - experimental
-      - opinionated
-      - performance
       - style
+      - performance
     disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
-      - commentedOutCode # todo
-      - deferInLoop
-  gocyclo:
-    min-complexity: 16
-  goimports:
-    local-prefixes: github.com/golangci/golangci-lint
-  golint:
-    min-confidence: 0
-  lll:
-    line-length: 145
-  maligned:
-    suggest-new: true
-  misspell:
-    locale: US
-  gofumpt:
-    extra-rules: true
+      - sloppyReassign
+      - rangeValCopy
+      - octalLiteral
+      - paramTypeCombine # already handle by gofumpt.extra-rules
+    settings:
+      hugeParam:
+        sizeThreshold: 100
   forbidigo:
     forbid:
-      - context\.WithCancel$
-      - ^print.*$
-      - panic
-  errorlint:
-    errorf-multi: true
+      - '^print(ln)?$'
+      - '^panic$'
+      - '^spew\.Print(f|ln)?$'
+      - '^spew\.Dump$'
+
 linters:
-  disable-all: true
-  enable:
-    - bodyclose
-#    - depguard
-    - dogsled
+  enable-all: true
+  disable:
+    - rowserrcheck # not relevant (SQL)
+    - sqlclosecheck # not relevant (SQL)
+    - cyclop # duplicate of gocyclo
     - dupl
-    - errcheck
-#    - errorlint
-#    - forbidigo
-    - funlen
+    - exhaustive
+    - exhaustruct
+    - forbidigo
+    - gochecknoglobals
     - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - gofmt
-    - gofumpt
-    - goimports
-    - goprintffuncname
+    - err113
     - gosec
-    - gosimple
-    - govet
-    - ineffassign
     - lll
-    - misspell
-    - nakedret
-    - revive
-    - staticcheck
-    - stylecheck
-    - typecheck
-    - unconvert
-    - unparam
-    - unused
-    - whitespace
+    - nilnil
+    - nlreturn
+    - paralleltest
     - prealloc
-    - godox
-    - gocognit
-    - gomodguard
+    - testpackage
+    - tparallel
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - gci # conflict with goimports
+    # temp: disputable rules
+    - nestif
+    - funlen
+    - tenv
+    # temp, TODO
+    - tagalign
+    - stylecheck
+    - contextcheck
+    - godot
+    - mnd
+    - noctx
+    - errcheck
+    - canonicalheader
+    - errorlint
+    - forcetypeassert
+    - nonamedreturns
+    - usestdlibvars
 
 issues:
-  exclude-rules:
-    # Exclude some linters from running on tests files.
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-
-# golangci.com configuration
-# https://github.com/golangci/golangci/wiki/Configuration
-service:
-  golangci-lint-version: 1.60.x # use the fixed version to not introduce new linters unexpectedly
+  exclude-use-default: false
+  max-same-issues: 0
+  exclude:
+    - 'package-comments: should have a package comment'
