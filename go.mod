@@ -1,7 +1,6 @@
 module github.com/dopos/narra
 
 go 1.22.3
-
 toolchain go1.23.2
 
 require (
@@ -11,7 +10,7 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
-	golang.org/x/oauth2 v0.26.0
+	golang.org/x/oauth2 v0.27.0
 	golang.org/x/sync v0.11.0
 	gopkg.in/gorilla/securecookie.v1 v1.1.1
 	zgo.at/zcache/v2 v2.1.0
