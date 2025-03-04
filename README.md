@@ -23,6 +23,16 @@ narra is available as docker image at
 
 * [GitHub container registry](https://github.com/orgs/dopos/packages/container/package/narra)
 
+## Configuration
+
+See [config.md](config.md)
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md)
+
+## Статистика исходного кода
+
 ## Problems known
 
 Chain of requests with warning `Cookie decode error: securecookie: the value is not valid` in logfile means you have the same cookie for upper domain.
@@ -52,4 +62,4 @@ Since v0.20 narra can act as Traefik2 ForwardAuth service.
 
 The MIT License (MIT), see [LICENSE](LICENSE).
 
-Copyright (c) 2017-2024 Aleksei Kovrizhkin <lekovr+dopos@gmail.com>
+Copyright (c) 2017-2025 Aleksei Kovrizhkin <lekovr+dopos@gmail.com>
