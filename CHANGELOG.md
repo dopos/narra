@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.27.0] - 2025-03-05
+
+* code changes
+    * use .golangci.yml from showonce
+    * use features from github.com/LeKovr/go-kit/config 0.5.1
+    * github.com/LeKovr/go-kit: replace logger with slogger
+    * remove hardocoded providers (gitea keeped default)
+* bump dependensies
+    * docker/build-push-action from 4 to 6
+    * docker/setup-buildx-action from 2 to 3
+    * github.com/LeKovr/go-kit/config from 0.2.2 to 0.5.1
+    * golang.org/x/oauth2 from 0.24.0 to 0.27.0 (#43)
+    * golang.org/x/sync from 0.9.0 to 0.11.0 (#41)
+
 ## [0.26.6] - 2024-11-18
 
 * update build for golang 1.22.3
