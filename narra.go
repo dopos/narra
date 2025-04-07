@@ -418,7 +418,7 @@ func (srv *Service) request(ctx context.Context, client *http.Client, url string
 	}
 
 	defer func() {
-		err := resp.Body.Close()
+		err = resp.Body.Close()
 		if err != nil {
 			log := slogger.FromContext(ctx)
 			log.Warn("body close", "err", err)

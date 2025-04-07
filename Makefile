@@ -129,6 +129,10 @@ ci-lint:
 ci-lint-fix:
 	@docker run --rm -v .:/src -w /src -v $$HOME/.cache/go-build:/.cache --user $(UID):$(GID) $(GOLANGCI_IMAGE) golangci-lint run --fix ./...
 
+## Verify golangci-lint config
+ci-lint-verify:
+	@docker run --rm -v .:/src -w /src $(GOLANGCI_IMAGE) golangci-lint config verify
+
 ## Run vet
 vet:
 	@$(GO) vet ./...
