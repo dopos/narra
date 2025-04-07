@@ -10,4 +10,8 @@
 # bin
 /narra
 
+# config
 .env*
+
+# lint report
+golangci-lint-report.xml

@@ -12,6 +12,7 @@ PRG_DEST      ?= $(PRG)
 
 GO            ?= go
 GOLANG_VERSION = 1.23.6-alpine3.21
+GOLANGCI_IMAGE ?= golangci/golangci-lint:v2.0.2
 
 SOURCES        = $(shell find . -maxdepth 3 -mindepth 1 -path ./var -prune -o -name '*.go')
 APP_VERSION   ?= $(shell git describe --tags --always)
@@ -122,7 +123,11 @@ lint:
 
 ## Run golangci-lint
 ci-lint:
-	@golangci-lint run ./...
+	@docker run --rm -v .:/src -w /src $(GOLANGCI_IMAGE) golangci-lint run --color always ./...
+
+## Run golangci-lint with fix
+ci-lint-fix:
+	@docker run --rm -v .:/src -w /src -v $$HOME/.cache/go-build:/.cache --user $(UID):$(GID) $(GOLANGCI_IMAGE) golangci-lint run --fix ./...
 
 ## Run vet
 vet:

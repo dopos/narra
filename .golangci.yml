@@ -1,5 +1,4 @@
-run:
-  timeout: 2m
+version: "2"
 
 linters-settings:
   govet:
@@ -50,53 +49,65 @@ linters-settings:
       - '^spew\.Dump$'
 
 linters:
-  enable-all: true
+  default: all
   disable:
+    - lll
+    - intrange
+    - gomoddirectives
+    - godox
+    - gocritic
+    - gochecknoinits
+    - gochecknoglobals
+    - forbidigo
+    - fatcontext
+    - exhaustruct
+    - err113
+    - cyclop
+    - perfsprint
+
+    - contextcheck
+    - depguard
+    - funlen
+    - nestif
+    - varnamelen
+
     - rowserrcheck # not relevant (SQL)
     - sqlclosecheck # not relevant (SQL)
-    - cyclop # duplicate of gocyclo
-    - dupl
-    - exhaustive
-    - exhaustruct
-    - forbidigo
-    - gochecknoglobals
-    - gochecknoinits
-    - err113
-    - gosec
-    - lll
-    - nilnil
-    - nlreturn
-    - paralleltest
-    - prealloc
-    - testpackage
-    - tparallel
-    - varnamelen
-    - wrapcheck
-    - wsl
-    - gci # conflict with goimports
-    # temp: disputable rules
-    - nestif
-    - funlen
-    - tenv
-    # temp, TODO
-    - tagalign
-    - stylecheck
-    - contextcheck
-    - godot
-    - mnd
-    - noctx
-    - errcheck
-    - canonicalheader
-    - errorlint
-    - forcetypeassert
-    - nonamedreturns
-    - usestdlibvars
-    - execinquery
-    - gomnd
-    - exportloopref
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+#    - golines
+  settings:
+    gci:
+      sections:
+        - standard                          # Standard section: captures all standard packages.
+        - default                           # Default section: contains all imports that could not be matched to another section type.
 
 issues:
-  exclude-use-default: false
+  max-issues-per-linter: 0
   max-same-issues: 0
+  uniq-by-line: true
   exclude:
     - 'package-comments: should have a package comment'
+
+output:
+  formats:
+    text:
+      path: stdout
+      colors: true
+      print-linter-name: true
+      print-issued-lines: true
+    checkstyle:
+      path: golangci-lint-report.xml
+  sort-order:
+    - linter
+    - severity
+    - file
+  show-stats: true
+run:
+  timeout: 5m  # Таймаут выполнения линтера
+  tests: false  # Не включать файлы тестов
