@@ -4,7 +4,7 @@ go 1.23.6
 
 require (
 	github.com/LeKovr/go-kit/config v0.5.1
-	github.com/LeKovr/go-kit/slogger v0.15.0
+	github.com/LeKovr/go-kit/slogger v0.15.1
 	github.com/LeKovr/go-kit/ver v0.10.0
 	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
@@ -24,6 +24,6 @@ require (
 	github.com/remychantenay/slog-otel v1.3.0 // indirect
 	go.opentelemetry.io/otel v1.24.0 // indirect
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
-	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/tools v0.11.0 // indirect
 )
