@@ -12,7 +12,7 @@ PRG_DEST      ?= $(PRG)
 
 GO            ?= go
 GOLANG_VERSION = 1.23.6-alpine3.21
-GOLANGCI_IMAGE ?= golangci/golangci-lint:v2.0.2
+GOLANGCI_IMAGE ?= golangci/golangci-lint:v2.1.0
 
 SOURCES        = $(shell find . -maxdepth 3 -mindepth 1 -path ./var -prune -o -name '*.go')
 APP_VERSION   ?= $(shell git describe --tags --always)
