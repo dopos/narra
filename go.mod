@@ -3,7 +3,7 @@ module github.com/dopos/narra
 go 1.23.6
 
 require (
-	github.com/LeKovr/go-kit/config v0.5.4
+	github.com/LeKovr/go-kit/config v0.5.5
 	github.com/LeKovr/go-kit/slogger v0.15.1
 	github.com/LeKovr/go-kit/ver v0.10.0
 	github.com/google/uuid v1.6.0
